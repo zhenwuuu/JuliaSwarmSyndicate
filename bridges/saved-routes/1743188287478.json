@@ -1,0 +1,19 @@
+{
+  "id": "1743188287478",
+  "name": "savedroute",
+  "sourceChain": "ethereum",
+  "destinationChain": "arbitrum",
+  "token": "ETH",
+  "amount": 50,
+  "priority": "speed",
+  "route": {
+    "provider": "🌉 Across Protocol",
+    "time": 84,
+    "cost": 0.17,
+    "gasCost": 18.88,
+    "bridgeFee": -18.71,
+    "bridgeFeePercent": -37.42,
+    "warning": null
+  },
+  "created": "2025-03-28T18:58:07.478Z"
+}

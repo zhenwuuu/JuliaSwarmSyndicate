@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Julia
+      uses: julia-actions/setup-julia@v1
+      with:
+        version: '1.8'
+
+    - name: Install dependencies
+      run: |
+        julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+    - name: Run tests
+      run: |
+        julia --project=. -e 'using Pkg; Pkg.test()'
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Julia
+      uses: julia-actions/setup-julia@v1
+      with:
+        version: '1.8'
+
+    - name: Install JuliaFormatter
+      run: |
+        julia -e 'using Pkg; Pkg.add("JuliaFormatter")'
+
+    - name: Run formatter check
+      run: |
+        julia -e 'using JuliaFormatter; format(".", verbose=true)' 

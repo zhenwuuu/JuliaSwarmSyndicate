@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  julia-server:
+    build:
+      context: ./julia
+      dockerfile: Dockerfile
+    ports:
+      - "8052:8052"
+    environment:
+      - JULIA_NUM_THREADS=auto
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=juliaos
+      - DB_PASSWORD=${DB_PASSWORD:-juliaos_password}
+      - DB_NAME=juliaos
+      - REQUIRE_AUTH=false
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:
+      - ./julia:/app
+      - ./packages/julia-bridge:/app/packages/julia-bridge
+      - julia-packages:/root/.julia
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8052/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-juliaos_password}
+      - POSTGRES_DB=juliaos
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U juliaos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
+  julia-packages: 
