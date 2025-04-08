@@ -27,13 +27,16 @@ abstract type SwarmBehavior end
 # Include core system modules in dependency order
 include("Blockchain.jl")
 include("SecurityTypes.jl")
+include("DEX.jl")
+include("Storage.jl")
+include("Web3Storage.jl")
+include("Sync.jl")
 include("Bridge.jl")
 include("MarketData.jl")
 include("algorithms/Algorithms.jl")
 include("SwarmManager.jl")
 include("MLIntegration.jl")
 include("SmartContracts.jl")
-include("DEX.jl")
 include("AgentSystem.jl")
 include("RiskManagement.jl")
 include("SecurityManager.jl")
@@ -42,9 +45,6 @@ include("SpecializedAgents.jl")
 include("CrossChainArbitrage.jl")
 include("UserModules.jl")
 include("OpenAISwarmAdapter.jl")
-include("Storage.jl")
-include("Web3Storage.jl")
-include("Sync.jl")
 
 # Export public components
 export Blockchain, SecurityTypes, Bridge, SwarmManager, SecurityManager, AgentSystem, DEX, MarketData, MLIntegration, AdvancedSwarm, SpecializedAgents, CrossChainArbitrage, RiskManagement, UserModules, OpenAISwarmAdapter, Algorithms, Storage, Web3Storage, Sync
@@ -184,6 +184,21 @@ export initialize_system, check_system_health
 # Module initialization
 function __init__()
     @info "JuliaOS runtime initialization"
+    
+    # Initialize core systems
+    try
+        AgentSystem.initialize()
+        @info "AgentSystem initialized."
+    catch e
+        @error "Failed to initialize AgentSystem: $e" stacktrace(catch_backtrace())
+    end
+    
+    try
+        SwarmManager.initialize()
+        @info "SwarmManager initialized."
+    catch e
+        @error "Failed to initialize SwarmManager: $e" stacktrace(catch_backtrace())
+    end
     
     # Runtime initialization code 
     # (This runs after all modules are loaded but before any user code executes)

@@ -72,16 +72,58 @@ mutable struct TradingStrategy
     is_active::Bool
 end
 
+# --- Load Token Addresses from Config --- #
+const TOKEN_CONFIG_PATH = joinpath(@__DIR__, "..", "config", "tokens.json")
+const SYMBOL_TO_ADDRESS_MAP = Ref{Dict{String, Dict{String, String}}}(Dict()) # Initialize as Ref
+
+function load_token_config()
+    if isfile(TOKEN_CONFIG_PATH)
+        try
+            config_data = JSON.parsefile(TOKEN_CONFIG_PATH)
+            # Load the specific map SwarmManager needs
+            if haskey(config_data, "symbol_to_address")
+                SYMBOL_TO_ADDRESS_MAP[] = config_data["symbol_to_address"]
+                @info "Loaded symbol_to_address map from tokens.json"
+            else
+                 @warn "'symbol_to_address' key not found in $(TOKEN_CONFIG_PATH). Using empty map."
+                 SYMBOL_TO_ADDRESS_MAP[] = Dict() # Ensure it's an empty Dict
+            end
+        catch e
+            @error "Failed to load or parse token config $(TOKEN_CONFIG_PATH): $e. Using empty map."
+             SYMBOL_TO_ADDRESS_MAP[] = Dict() # Ensure it's an empty Dict on error
+        end
+    else
+        @warn "Token config file not found: $(TOKEN_CONFIG_PATH). Using empty map."
+        SYMBOL_TO_ADDRESS_MAP[] = Dict() # Ensure it's an empty Dict if file not found
+    end
+end
+
+# Call the loading function when the module is initialized
+function __init__()
+    load_token_config()
+end
+
+"""
+    initialize()
+
+Initialize the SwarmManager. (Currently logs only).
+"""
+function initialize()
+    @info "SwarmManager initialized."
+    # NOTE: SwarmManager currently doesn't hold global runtime state to clear.
+    # Active swarm objects are managed within AgentSystem's ACTIVE_SWARMS dictionary.
+end
+
 # --- Placeholder Symbol-to-Address Map (Needs Improvement!) ---
 # TODO: Replace this with a robust lookup mechanism (config file, token registry service)
-const SYMBOL_TO_ADDRESS_MAP = Dict(
-    # Ethereum Mainnet Examples
-    "WETH" => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-    "USDC" => "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    "DAI" => "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-    "WBTC" => "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
-    # Add other common tokens for relevant chains if needed for testing
-)
+# const SYMBOL_TO_ADDRESS_MAP = Dict(
+#     # Ethereum Mainnet Examples
+#     "WETH" => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+#     "USDC" => "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+#     "DAI" => "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+#     "WBTC" => "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+#     # Add other common tokens for relevant chains if needed for testing
+# )
 
 function create_swarm(config::SwarmManagerConfig, chain::String="ethereum", dex::String="uniswap-v3")
     # Create an algorithm instance based on config
@@ -786,26 +828,35 @@ function execute_trade!(strategy::TradingStrategy, signal::Dict{String,Any})
     chain = strategy.swarm.chain
     dex = strategy.swarm.dex
 
-    # --- Token Address Resolution (Using Placeholder Map) ---
+    # === Use Bridge to resolve addresses ===
     tokens = split(pair, '/')
     if length(tokens) != 2
-        @error "Invalid trading pair format: $pair"
+        @error "Invalid trading pair format: $pair. Skipping backtest for this pair."
         return nothing
     end
     token0_sym, token1_sym = tokens[1], tokens[2]
 
-    token0_addr = get(SYMBOL_TO_ADDRESS_MAP, token0_sym, nothing)
-    token1_addr = get(SYMBOL_TO_ADDRESS_MAP, token1_sym, nothing)
+    token0_addr_res = Bridge.get_token_address(token0_sym, chain)
+    token1_addr_res = Bridge.get_token_address(token1_sym, chain)
 
-    if isnothing(token0_addr) || isnothing(token1_addr)
-        @error "Token address not found in placeholder map for symbols: $token0_sym, $token1_sym" pair=pair
-        @warn "Update the SYMBOL_TO_ADDRESS_MAP in SwarmManager.jl or implement a better lookup method."
+    if !token0_addr_res["success"] || !token1_addr_res["success"]
+        @warn "Could not resolve token addresses for pair $pair on chain $(chain). Skipping backtest." error0=get(token0_addr_res, "error", "N/A") error1=get(token1_addr_res, "error", "N/A")
         return nothing
     end
-    @info "Resolved addresses: $token0_sym -> $token0_addr, $token1_sym -> $token1_addr" pair=pair
-    # --- End Address Resolution ---
+    token0_addr = token0_addr_res["data"]["address"]
+    token1_addr = token1_addr_res["data"]["address"]
+    # ===================================
 
-    # --- Get Token Decimals Dynamically ---
+    # if isnothing(token0_addr) || isnothing(token1_addr)
+    #     @warn "Could not resolve token addresses for pair $pair. Skipping backtest."
+    #     continue
+    # end
+
+    # Iterate through historical data
+    entry_price = 0.0
+    entry_time = nothing
+
+    # Get token decimals
     connection = Blockchain.connect(network=chain)
     if !connection["connected"]
          @error "Failed to connect to $chain to fetch token decimals for trade execution."
@@ -824,7 +875,6 @@ function execute_trade!(strategy::TradingStrategy, signal::Dict{String,Any})
         decimals1 = 18 # Fallback
     end
     @info "Using decimals: $token0_sym -> $decimals0, $token1_sym -> $decimals1"
-    # --- End Decimal Fetching ---
 
     if signal_type == "buy"
         # Assume buying Token1 (e.g., WETH) by spending Token0 (e.g., USDC)

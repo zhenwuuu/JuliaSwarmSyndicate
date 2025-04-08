@@ -191,8 +191,38 @@ function execute_command(command::String, params::Vector)::CommandResult
             return CommandResult(agent_info)
 
         elseif command == "AgentSystem.list_agents"
-             agents_list = AgentSystem.list_agents()
-             return CommandResult(Dict("agents" => agents_list))
+            @info "[list_agents] Handler started."
+            # Get real agents from AgentSystem and DB
+            # First try to get from AgentSystem (runtime)
+            active_agents = []
+            @info "[list_agents] Runtime agents: $(AgentSystem.ACTIVE_AGENTS)"
+            for (id, agent) in AgentSystem.ACTIVE_AGENTS
+                push!(active_agents, Dict(
+                    "id" => id,
+                    "name" => agent.config.name,
+                    "type" => agent.config.agent_type,
+                    "status" => agent.status
+                ))
+            end
+            @info "[list_agents] Processed runtime agents: $(active_agents)"
+            
+            # If no active agents, try to get from DB
+            if isempty(active_agents)
+                @info "[list_agents] No active runtime agents. Querying database..."
+                db_agents = Storage.list_agents(db)
+                @info "[list_agents] Database returned: $(typeof(db_agents)) -> $(db_agents)"
+                # Corrected Check: Check if the result is a non-empty vector
+                if db_agents isa Vector && !isempty(db_agents)
+                    active_agents = db_agents # Assign the vector directly
+                    @info "[list_agents] Using agents from database."
+                else
+                    @info "[list_agents] Database result is empty or not a vector. Resulting list is empty."
+                end
+            end
+            
+            result = Dict("agents" => active_agents)
+            @info "[list_agents] Final result: $(result)"
+            return CommandResult(result)
 
         elseif command == "AgentSystem.get_agent_state"
             if isempty(params)
@@ -229,8 +259,39 @@ function execute_command(command::String, params::Vector)::CommandResult
             return CommandResult(swarm_info)
 
         elseif command == "SwarmManager.list_swarms"
-            swarms_list = SwarmManager.list_swarms()
-            return CommandResult(Dict("swarms" => swarms_list))
+            @info "[list_swarms] Handler started."
+            # Get real swarms from AgentSystem and DB
+            active_swarms = []
+            @info "[list_swarms] Runtime swarms: $(AgentSystem.ACTIVE_SWARMS)"
+            
+            # First from runtime
+            for (name, swarm) in AgentSystem.ACTIVE_SWARMS
+                push!(active_swarms, Dict(
+                    "id" => name, # Using name as ID in runtime
+                    "name" => name,
+                    "type" => swarm.swarm_object.config.algorithm["type"],
+                    "status" => swarm.status
+                ))
+            end
+            @info "[list_swarms] Processed runtime swarms: $(active_swarms)"
+            
+            # If no active swarms, try to get from DB
+            if isempty(active_swarms)
+                @info "[list_swarms] No active runtime swarms. Querying database..."
+                db_swarms = Storage.list_swarms(db)
+                @info "[list_swarms] Database returned: $(typeof(db_swarms)) -> $(db_swarms)"
+                # Corrected Check: Check if the result is a non-empty vector
+                if db_swarms isa Vector && !isempty(db_swarms)
+                    active_swarms = db_swarms # Assign the vector directly
+                     @info "[list_swarms] Using swarms from database."
+                else
+                     @info "[list_swarms] Database result is empty or not a vector. Resulting list is empty."
+                end
+            end
+            
+            result = Dict("swarms" => active_swarms)
+             @info "[list_swarms] Final result: $(result)"
+            return CommandResult(result)
 
         elseif command == "SwarmManager.get_swarm_state"
             if isempty(params)

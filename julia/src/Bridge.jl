@@ -14,7 +14,6 @@ import Logging
 using ..Blockchain
 using ..DEX
 using ..Storage
-using ..Utils
 
 # Define the API endpoint URL
 const API_BASE_URL = "http://localhost:8082/api"
@@ -52,17 +51,43 @@ const command_handlers = Dict{String, CommandHandler}()
 const connections = Dict{String, Dict{String, Any}}()
 const bridge_start_time = Ref(now())
 
+# --- Load Token Addresses from Config --- #
+const TOKEN_CONFIG_PATH = joinpath(@__DIR__, "..", "config", "tokens.json")
+const BRIDGE_TOKEN_ADDRESS_MAP = Ref{Dict{String, Dict{String, String}}}(Dict()) # Initialize as Ref
+
+function load_bridge_token_config()
+    if isfile(TOKEN_CONFIG_PATH)
+        try
+            config_data = JSON.parsefile(TOKEN_CONFIG_PATH)
+            # Load the specific map Bridge needs
+            if haskey(config_data, "bridge_token_map")
+                BRIDGE_TOKEN_ADDRESS_MAP[] = config_data["bridge_token_map"]
+                @info "Bridge: Loaded bridge_token_map from tokens.json"
+            else
+                @warn "Bridge: 'bridge_token_map' key not found in $(TOKEN_CONFIG_PATH). Using empty map."
+                 BRIDGE_TOKEN_ADDRESS_MAP[] = Dict()
+            end
+        catch e
+            @error "Bridge: Failed to load or parse token config $(TOKEN_CONFIG_PATH): $e. Using empty map."
+            BRIDGE_TOKEN_ADDRESS_MAP[] = Dict()
+        end
+    else
+        @warn "Bridge: Token config file not found: $(TOKEN_CONFIG_PATH). Using empty map."
+        BRIDGE_TOKEN_ADDRESS_MAP[] = Dict()
+    end
+end
+
 # === Placeholder Token Address Map ===
 # TODO: Move this to a configuration file or a dedicated TokenRegistry module
-const TOKEN_ADDRESS_MAP = Dict(
-    ("WETH", "ethereum") => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-    ("USDC", "ethereum") => "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    ("DAI", "ethereum") => "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-    ("WBTC", "ethereum") => "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-    # Add other chains and tokens as needed
-    # ("WMATIC", "polygon") => "0x...",
-    # ("USDC", "polygon") => "0x...",
-)
+# const TOKEN_ADDRESS_MAP = Dict(
+#     ("WETH", "ethereum") => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+#     ("USDC", "ethereum") => "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+#     ("DAI", "ethereum") => "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+#     ("WBTC", "ethereum") => "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+#     # Add other chains and tokens as needed
+#     # ("WMATIC", "polygon") => "0x...",
+#     # ("USDC", "polygon") => "0x...",
+# )
 
 """
     init_bridge()
@@ -153,9 +178,15 @@ Resolves a token symbol to its address for a given chain.
 """
 function get_token_address(symbol::String, chain::String)
     @info "Bridge: Resolving token address for symbol '$(symbol)' on chain '$(chain)'"
-    key = (uppercase(symbol), lowercase(chain))
-    if haskey(TOKEN_ADDRESS_MAP, key)
-        address = TOKEN_ADDRESS_MAP[key]
+    chain_map = get(BRIDGE_TOKEN_ADDRESS_MAP[], lowercase(chain), nothing)
+    if isnothing(chain_map)
+        @warn "Bridge: Token map not found for chain '$(chain)'"
+        return Dict("success" => false, "error" => "Token map not found for chain '$(chain)'")
+    end
+
+    token_sym_upper = uppercase(symbol)
+    if haskey(chain_map, token_sym_upper)
+        address = chain_map[token_sym_upper]
         @info "Bridge: Resolved '$(symbol)' on '$(chain)' to address $(address)"
         return Dict("success" => true, "data" => Dict("address" => address))
     else
@@ -742,6 +773,9 @@ function __init__()
     
     # Echo command for testing
     register_command_handler("echo", (message) -> message)
+    
+    # Load token addresses from config
+    load_bridge_token_config()
 end
 
 end # module 

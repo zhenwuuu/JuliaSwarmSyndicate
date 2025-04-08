@@ -125,6 +125,18 @@ const ACTIVE_AGENTS = Dict{String, AgentState}()
 const ACTIVE_SWARMS = Dict{String, SwarmState}()
 
 """
+    initialize()
+
+Initialize the AgentSystem runtime state.
+Clears active agents and swarms.
+"""
+function initialize()
+    empty!(ACTIVE_AGENTS)
+    empty!(ACTIVE_SWARMS)
+    @info "AgentSystem initialized. Cleared active agents and swarms."
+end
+
+"""
     create_agent(config::AgentConfig)
 
 Create a new agent instance and store its state in memory.
@@ -311,12 +323,12 @@ end
 # --- Swarm Functions --- #
 
 """
-    create_swarm(swarm_manager_config::SwarmManager.SwarmConfig, chain::String, dex::String)
+    create_swarm(swarm_manager_config::SwarmManager.SwarmManagerConfig, chain::String, dex::String)
 
 Create a new swarm instance using SwarmManager, store its runtime state in memory.
 Assumes the swarm config/details are also saved in persistent storage.
 """
-function create_swarm(swarm_manager_config::SwarmManager.SwarmConfig, chain::String="ethereum", dex::String="uniswap-v3")
+function create_swarm(swarm_manager_config::SwarmManager.SwarmManagerConfig, chain::String="ethereum", dex::String="uniswap-v3")
      swarm_id = swarm_manager_config.name # Use name as ID for consistency? Or pass ID in?
      # Let's assume config passed in has an ID field or we use name.
      # If SwarmManager.SwarmConfig doesn't have an ID, we need one.

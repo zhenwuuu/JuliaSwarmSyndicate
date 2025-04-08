@@ -9,6 +9,7 @@ module Algorithms
 export OptimizationAlgorithm
 export PSO, GWO, ACO, GA, WOA, DE
 export optimize, initialize, update_agents, get_best_solution
+export initialize!, evaluate_fitness!, select_leaders!, update_positions!, get_best_position, get_best_fitness, get_convergence_data
 
 using Random
 using Distributions
@@ -170,6 +171,46 @@ end
 function algorithm_size(algorithm::DE)
     return algorithm.population
 end
+
+# --- Added Stubs for SwarmManager Integration ---
+function initialize!(algo::OptimizationAlgorithm, num_particles::Int, dimension::Int, bounds::Vector{Tuple{Float64, Float64}})
+    @info "Stub: initialize! called for $(typeof(algo))"
+    # In a real implementation, this would set up particle positions, velocities, etc.
+end
+
+function evaluate_fitness!(algo::OptimizationAlgorithm, fitness_function::Function)
+    @info "Stub: evaluate_fitness! called for $(typeof(algo))"
+    # In a real implementation, this would calculate fitness for each particle/agent
+end
+
+function select_leaders!(algo::OptimizationAlgorithm)
+    @info "Stub: select_leaders! called for $(typeof(algo))"
+    # In a real implementation, this would update pbest, gbest, etc.
+end
+
+function update_positions!(algo::OptimizationAlgorithm, fitness_function::Function)
+    @info "Stub: update_positions! called for $(typeof(algo))"
+    # In a real implementation, this would move particles/agents based on algorithm rules
+end
+
+function get_best_position(algo::OptimizationAlgorithm)
+    @info "Stub: get_best_position called for $(typeof(algo))"
+    # Return a default vector matching dimensions
+    return zeros(Float64, algo.dimensions)
+end
+
+function get_best_fitness(algo::OptimizationAlgorithm)
+    @info "Stub: get_best_fitness called for $(typeof(algo))"
+    # Return a default poor fitness value (assuming minimization)
+    return Inf
+end
+
+function get_convergence_data(algo::OptimizationAlgorithm)
+    @info "Stub: get_convergence_data called for $(typeof(algo))"
+    # Return empty data structure
+    return Dict{String, Any}()
+end
+# --- End Added Stubs ---
 
 # End of module
 end 

@@ -4,8 +4,8 @@ A powerful command-line interface for the JuliaOS framework, providing tools to 
 
 ## Features
 
-- **Interactive Mode**: User-friendly interface for creating and managing agents
-- **Rich Terminal UI**: Color-coded status displays and progress indicators
+- **Interactive Mode**: User-friendly Node.js interface (`scripts/interactive.cjs`) for managing agents and swarms.
+- **Rich Terminal UI**: Color-coded status displays and progress indicators in the CLI.
 - **Real-time Monitoring**: Live monitoring of agent performance and market data
 - **Comprehensive Commands**: Full suite of commands for agent and swarm management
 - **Error Handling**: Clear error messages and stack traces
@@ -15,27 +15,41 @@ A powerful command-line interface for the JuliaOS framework, providing tools to 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/juliaos/framework.git
-cd framework
+git clone https://github.com/your-org/juliaos.git # Replace with actual repo URL if different
+cd juliaos
 ```
 
-2. Install dependencies:
+2. Install Node.js dependencies (for the CLI):
 ```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
+npm install
 ```
 
-3. Make the CLI executable:
+3. Set up the Julia environment:
 ```bash
-chmod +x juliaos.jl
+cd julia
+julia setup.jl
+```
+   Alternatively, use the bridge setup script:
+```bash
+./scripts/setup_julia_bridge.sh
 ```
 
 ## Usage
 
-### Interactive Mode
+### Starting the Backend Server
 
-Launch the interactive mode:
+Navigate to the `julia` directory and run the server:
 ```bash
-./juliaos.jl interactive
+cd julia
+./start.sh
+```
+This starts the `julia_server.jl` on the configured port (default: 8052).
+
+### Interactive CLI Mode
+
+In a separate terminal, run the interactive Node.js script:
+```bash
+node scripts/interactive.cjs
 ```
 
 This will start an interactive session where you can:
@@ -43,60 +57,57 @@ This will start an interactive session where you can:
 - Monitor active agents
 - View market data
 - Manage bridge operations
+- Connect Wallets via the Cross-Chain Hub
 
-### Command Line Mode
+### Command Line Mode (Examples - Adapt as needed based on `scripts/interactive.cjs`)
 
-#### Dashboard
+The primary interface is now the Node.js interactive script. Examples below show conceptual Julia operations that might be triggered *via* the interactive CLI or could be adapted into dedicated scripts if needed.
+
+#### Dashboard (Conceptual - Check if `scripts/interactive.cjs` offers similar views)
 ```bash
-./juliaos.jl dashboard [--host HOST] [--port PORT]
+# No direct Julia command, use interactive CLI
 ```
 
-#### Backtest
+#### Backtest (Conceptual - Check if implemented in Julia modules called by CLI)
 ```bash
-./juliaos.jl backtest --strategy STRATEGY --start-date YYYY-MM-DD --end-date YYYY-MM-DD --initial-capital AMOUNT --pairs PAIR1 PAIR2 ...
+# Example: If a backtest function exists in JuliaOS.SwarmManager
+# julia -e 'using JuliaOS.SwarmManager; backtest_strategy(...)'
 ```
 
-#### Optimize
+#### Optimize (Conceptual - Likely managed within SwarmManager logic)
 ```bash
-./juliaos.jl optimize --algorithm ALGO --iterations N --population-size N --parameters PARAM1 PARAM2 ...
+# Swarm optimization happens within the running swarm via start_swarm!
 ```
 
-#### Market Data
+#### Market Data (Conceptual - Check if CLI offers direct market data view)
 ```bash
-./juliaos.jl market --pair PAIR --timeframe TIMEFRAME --limit N
+# Example: If a market data function exists in JuliaOS.MarketData
+# julia -e 'using JuliaOS.MarketData; fetch_market_data(...)'
 ```
 
-#### Project Scaffolding
+#### Project Scaffolding (Conceptual - Needs specific script if required)
 ```bash
-./juliaos.jl scaffold --name NAME --type TYPE
+# No standard command observed
 ```
 
 ### Examples
 
-1. Create a new arbitrage agent:
+1. Create a new arbitrage agent via the interactive CLI:
 ```bash
-./juliaos.jl interactive
-# Select "Create New Agent"
-# Choose "Arbitrage Agent"
-# Configure parameters
+node scripts/interactive.cjs
+# Select "Agent Management" -> "Create Agent"
+# Choose agent type and configure parameters
 ```
 
-2. Run a backtest:
+2. Run a backtest (if available in Julia backend, triggered via CLI/custom script):
 ```bash
-./juliaos.jl backtest \
-  --strategy "Momentum" \
-  --start-date "2023-01-01" \
-  --end-date "2023-12-31" \
-  --initial-capital 10000 \
-  --pairs "ETH/USDC" "BTC/USDC"
+# (Requires specific implementation in Julia modules)
 ```
 
-3. Monitor market data:
+3. Monitor market data (if available via CLI):
 ```bash
-./juliaos.jl market \
-  --pair "ETH/USDC" \
-  --timeframe "1h" \
-  --limit 100
+node scripts/interactive.cjs
+# Explore menus for market data options
 ```
 
 ## Configuration
@@ -141,37 +152,98 @@ Example agent configuration:
 
 ## Development
 
-### Adding New Commands
+### Adding New Commands (to Node.js CLI)
 
-1. Add command definition in `apps/cli.jl`:
-```julia
-@add_arg_table! s begin
-    "new-command"
-        help = "Description of the new command"
-        action = :command
-end
-```
+Refer to the structure of `scripts/interactive.cjs` and Node.js best practices (e.g., using `inquirer`, `chalk`).
 
-2. Add command implementation:
-```julia
-function cmd_new_command(args)
-    # Implementation
-end
-```
+### Adding New Backend Commands (Callable via Bridge)
 
-3. Update main function:
-```julia
-if args["%COMMAND%"] == "new-command"
-    cmd_new_command(args["new-command"])
-end
-```
+1. Add function implementation in the relevant Julia module (e.g., `julia/src/SwarmManager.jl`).
+2. Expose the function in `julia/src/JuliaOS.jl` if necessary.
+3. Add a command handler case in `process_command` within `julia/julia_server.jl`.
+4. Update the Node.js bridge call in `scripts/interactive.cjs` (e.g., `juliaBridge.runJuliaCommand(...)`).
 
 ### Testing
 
-Run tests:
+Run Julia tests:
 ```bash
+cd julia
 julia --project=test test/runtests.jl
 ```
+Run Node.js tests (if any exist):
+```bash
+npm test
+```
+
+## Running the Server
+
+### Quick Start
+
+Use the start script in the `julia` directory to launch the server:
+
+```bash
+cd julia
+./start.sh
+```
+
+This script:
+1. Checks if Julia is installed
+2. Verifies that dependencies are potentially met (via `Project.toml`)
+3. Starts `julia_server.jl` on the configured port (default: 8052)
+4. Verifies that the server is running
+
+### Manual Start
+
+To start the server manually:
+
+```bash
+cd julia
+julia julia_server.jl
+```
+
+### Testing the Bridge Connection
+
+You can test the bridge connection by:
+1. Starting the Julia server (`./start.sh`)
+2. Running the Node.js interactive CLI (`node scripts/interactive.cjs`)
+3. Using options like "Run System Checks" or "List Agents" which communicate with the backend.
+
+For specific troubleshooting:
+
+```bash
+cd julia
+julia troubleshoot.jl
+```
+
+## Architecture
+
+- `JuliaOSBridge` (`src/Bridge.jl`): Handles communication between Node.js/TypeScript and Julia.
+- `JuliaOS` (`src/JuliaOS.jl`): Core computational engine, includes other modules.
+- Supporting modules (`src/...`) for specialized functionality (Agents, Swarms, Blockchain, DEX, etc.)
+
+## Development
+
+### Project Structure (`julia` directory)
+
+- `src/` - Source code for the JuliaOS system modules.
+- `test/` - Tests for the JuliaOS system.
+- `julia_server.jl` - Main HTTP server script.
+- `start.sh` - Script to run the server.
+- `setup.jl` - Script to set up the Julia environment.
+- `Project.toml` / `Manifest.toml` - Package dependencies.
+- `troubleshoot.jl` - Troubleshooting script.
+- `config/` - Configuration files.
+- `docs/`, `examples/`, `use_cases/` - Documentation and examples.
+
+### Extending the Bridge
+
+To extend the bridge with new functionality callable from Node.js:
+
+1. Implement the desired function in the appropriate Julia module within `src/`.
+2. Ensure the function is accessible (e.g., exported by its module and included in `JuliaOS.jl`).
+3. Add a new `elseif command == "your_new_command"` block within the `process_command` function in `julia_server.jl` to handle the command string and call your new Julia function, passing necessary parameters from `params`.
+4. In the Node.js code (`scripts/interactive.cjs` or other relevant file), call `juliaBridge.runJuliaCommand("your_new_command", [param1, param2, ...])` to invoke the new backend command.
+5. Remember to handle the response or potential errors returned from the Julia backend in your Node.js code.
 
 ## Contributing
 
