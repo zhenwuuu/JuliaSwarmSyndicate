@@ -653,7 +653,7 @@ async function agentManagementMenu() {
 async function swarmManagementMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     // Display an improved swarm animation with better alignment
     console.log(chalk.green(`
       ╔══════════════════════════════════════════╗
@@ -670,23 +670,27 @@ async function swarmManagementMenu() {
       ║      ╰─○─╯       ○         ╰─○─╯        ║
       ╚══════════════════════════════════════════╝
     `));
-    
+
     const { action } = await inquirer.prompt([
         {
             type: 'list',
             name: 'action',
             message: '🐝 Select swarm action:',
             choices: [
-                'Create Swarm',
+                'Create Swarm', // Includes Julia Native & OpenAI
                 'List Swarms',
-                'Configure Swarm',
-                'Start Swarm',
-                'Stop Swarm',
-                'View Metrics',
+                'Configure Swarm', // Primarily for Julia Native Swarms for now
+                'Start Swarm',     // Primarily for Julia Native Swarms for now
+                'Stop Swarm',      // Primarily for Julia Native Swarms for now
+                new inquirer.Separator('--- OpenAI Swarm Actions ---'),
+                'Run OpenAI Task',
+                'Get OpenAI Response',
+                new inquirer.Separator(),
+                'View Metrics',    // Primarily for Julia Native Swarms for now
                 'Delete Swarm',
                 'Back'
             ],
-            pageSize: 10
+            pageSize: 15 // Increased page size
         }
     ]);
 
@@ -697,7 +701,7 @@ async function swarmManagementMenu() {
             spinner: 'dots',
             color: 'green'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
         spinner.stop();
     }
@@ -717,6 +721,12 @@ async function swarmManagementMenu() {
             break;
         case 'Stop Swarm':
             await stopSwarm();
+            break;
+        case 'Run OpenAI Task': // New Action
+            await runOpenAITask();
+            break;
+        case 'Get OpenAI Response': // New Action
+            await getOpenAIResponse();
             break;
         case 'View Metrics':
             await displaySwarmMetrics();
@@ -2551,30 +2561,34 @@ async function createOpenAISwarmService(name, agentConfigs) {
     console.log(chalk.magenta('[DEBUG] Entered createOpenAISwarmService.'));
     try {
         console.log(chalk.yellow(`Attempting to call backend for OpenAI Swarm: ${name}`));
-        
+
         // Construct the payload for the Julia backend function
+        // Ensure this structure matches what `julia_server.jl` expects for `create_openai_swarm`
+        // The backend expects the config object directly as the first element in the params array.
         const payload = {
             name: name,
             agents: agentConfigs
+            // Add other OpenAI-specific swarm config if needed here
         };
 
         console.log(chalk.magenta('[DEBUG] Payload constructed:', JSON.stringify(payload)));
 
         // Call the Julia backend function via the bridge
         console.log(chalk.magenta('[DEBUG] Calling juliaBridge.runJuliaCommand...'));
+        // Pass the payload object as the single element in the params array
         const result = await juliaBridge.runJuliaCommand(
-            'OpenAISwarmAdapter.create_openai_swarm', 
-            [payload] // Pass payload as an array element
+            'create_openai_swarm',
+            [payload] // Pass payload directly inside the array
         );
         console.log(chalk.magenta('[DEBUG] juliaBridge.runJuliaCommand finished.'));
 
         console.log(chalk.cyan('Backend Response (OpenAI Swarm):'), JSON.stringify(result));
-        
+
         if (result && result.error) {
             console.log(chalk.magenta('[DEBUG] Backend returned an error.'));
             throw new Error(result.error);
         }
-        
+
         console.log(chalk.magenta('[DEBUG] Returning result from createOpenAISwarmService.'));
         return result;
 
@@ -2619,7 +2633,7 @@ async function broadcastSwarmMessageService(swarmId, message) {
     try {
         // Call Julia backend to broadcast message
         const result = await juliaBridge.runJuliaCommand('broadcast_message', [swarmId, JSON.stringify(message)]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2628,6 +2642,158 @@ async function broadcastSwarmMessageService(swarmId, message) {
     } catch (error) {
         throw new Error(`Failed to broadcast swarm message: ${error.message}`);
     }
+}
+
+// =============================================================================
+// New OpenAI Swarm Interaction Functions
+// =============================================================================
+
+async function runOpenAITask() {
+    console.log(chalk.blue('\n--- Run Task in OpenAI Swarm ---'));
+    try {
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'swarm_id',
+                message: 'Enter the OpenAI Swarm ID:',
+                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'agent_name',
+                message: 'Enter the Agent Name within the swarm:',
+                validate: input => input.trim().length > 0 ? true : 'Agent Name cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'task_prompt',
+                message: 'Enter the task prompt for the agent:',
+                validate: input => input.trim().length > 0 ? true : 'Task prompt cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'thread_id',
+                message: 'Enter existing Thread ID (optional, leave blank to create new):'
+            }
+        ]);
+
+        const { swarm_id, agent_name, task_prompt } = answers;
+        const thread_id = answers.thread_id.trim() || null; // Send null if blank
+
+        const spinner = ora('Submitting task to OpenAI swarm via backend...').start();
+
+        // Construct params array
+        const params = [swarm_id, agent_name, task_prompt];
+        if (thread_id) {
+            params.push(thread_id);
+        }
+
+        try {
+            const response = await juliaBridge.runJuliaCommand('run_openai_task', params);
+            spinner.stop();
+
+            if (response && response.error) {
+                console.error(chalk.red('\nBackend Error:'), response.error);
+            } else if (response && response.result && response.result.success) {
+                spinner.succeed('Task submitted successfully!');
+                console.log(chalk.green('\nTask Submission Details:'));
+                console.log(chalk.cyan(`  Swarm ID:    ${response.result.swarm_id}`));
+                console.log(chalk.cyan(`  Agent Name:  ${response.result.agent_name}`));
+                console.log(chalk.cyan(`  Thread ID:   ${response.result.thread_id}`));
+                console.log(chalk.cyan(`  Run ID:      ${response.result.run_id}`));
+                console.log(chalk.cyan(`  Run Status:  ${response.result.status}`));
+                console.log(chalk.yellow('\nUse "Get OpenAI Response" with the Thread ID and Run ID to check status and get results.'));
+            } else {
+                console.error(chalk.red('\nFailed to submit task. Unexpected response format:'));
+                console.log(response);
+            }
+        } catch (bridgeError) {
+            spinner.fail('Failed to communicate with backend.');
+            console.error(chalk.red('Bridge Error:'), bridgeError.message);
+        }
+
+    } catch (error) {
+        console.error(chalk.red('An error occurred while setting up the OpenAI task:'), error.message);
+    }
+
+    // Pause
+    await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
+}
+
+async function getOpenAIResponse() {
+    console.log(chalk.blue('\n--- Get Response/Status from OpenAI Run ---'));
+    try {
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'swarm_id',
+                message: 'Enter the OpenAI Swarm ID:',
+                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'thread_id',
+                message: 'Enter the Thread ID:',
+                validate: input => input.trim().length > 0 ? true : 'Thread ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'run_id',
+                message: 'Enter the Run ID:',
+                validate: input => input.trim().length > 0 ? true : 'Run ID cannot be empty.'
+            }
+        ]);
+
+        const { swarm_id, thread_id, run_id } = answers;
+        const spinner = ora('Fetching response/status from backend...').start();
+
+        try {
+            const response = await juliaBridge.runJuliaCommand('get_openai_response', [swarm_id, thread_id, run_id]);
+            spinner.stop();
+
+            if (response && response.error) {
+                console.error(chalk.red('\nBackend Error:'), response.error);
+            } else if (response && response.result) {
+                const result = response.result;
+                if (result.success) {
+                    spinner.succeed(`Status fetched: ${result.status}`);
+                    console.log(chalk.green('\nRun Details:'));
+                    console.log(chalk.cyan(`  Swarm ID:    ${result.swarm_id || swarm_id}`));
+                    console.log(chalk.cyan(`  Thread ID:   ${result.thread_id || thread_id}`));
+                    console.log(chalk.cyan(`  Run ID:      ${result.run_id || run_id}`));
+                    console.log(chalk.cyan(`  Status:      ${result.status}`));
+
+                    if (result.status === 'completed' && result.response) {
+                        console.log(chalk.cyan(`\nAssistant Response:`));
+                        console.log(chalk.white(`  ${result.response.content || '(No content found)'}`));
+                        console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                    } else if (result.message) {
+                         console.log(chalk.yellow(`\nMessage: ${result.message}`));
+                    }
+
+                } else {
+                    // Handle cases where success is false (e.g., run failed)
+                     spinner.fail(`Run status: ${result.status || 'Failed'}`);
+                     console.log(chalk.red(`\nError: ${result.error || 'Failed to get response.'}`));
+                     if (result.run_details) {
+                         console.log(chalk.gray('Run Details:'), JSON.stringify(result.run_details, null, 2));
+                     }
+                }
+            } else {
+                console.error(chalk.red('\nFailed to get response. Unexpected response format:'));
+                console.log(response);
+            }
+        } catch (bridgeError) {
+            spinner.fail('Failed to communicate with backend.');
+            console.error(chalk.red('Bridge Error:'), bridgeError.message);
+        }
+
+    } catch (error) {
+        console.error(chalk.red('An error occurred while setting up the OpenAI response request:'), error.message);
+    }
+
+    // Pause
+    await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
 }
 
 // Helper function to get agent capabilities based on type
@@ -2730,7 +2896,20 @@ async function displayWelcomeAnimation() {
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
      ║                                                               ║
-     ║                   J U L I A   O S                            ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ╚═══════════════════════════════════════════════════════════════╝`,
+        `
+     ╔═══════════════════════════════════════════════════════════════╗
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ║                                                               ║
      ║                                                               ║
@@ -2742,66 +2921,66 @@ async function displayWelcomeAnimation() {
         `
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          █                                                    ║
-     ║          █            █     █   █     █     █                 ║
-     ║          █           █ █    █   █    █ █   █ █                ║
-     ║          █          █   █   █   █   █   █ █   █               ║
-     ║          █          █████   █   █   █████ █████               ║
-     ║          █          █   █    █ █    █   █ █   █               ║
-     ║          █          █   █     █     █   █ █   █               ║
-     ║          █████████  █   █     █     █   █ █   █               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`,
         `
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          ██╗                                                  ║
-     ║          ██║       ██╗   ██╗  ██╗      ██╗   █████╗          ║
-     ║          ██║       ██║   ██║  ██║      ██║  ██╔══██╗         ║
-     ║          ██║       ██║   ██║  ██║      ██║  ███████║         ║
-     ║     ██   ██║       ██║   ██║  ██║      ██║  ██╔══██║         ║
-     ║     ╚█████╔╝       ╚██████╔╝  ███████╗ ██║  ██║  ██║         ║
-     ║      ╚════╝         ╚═════╝   ╚══════╝ ╚═╝  ╚═╝  ╚═╝         ║
-     ║                               J3OS Mode v1.0                  ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`,
         `
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          ██╗██████╗                                           ║
-     ║          ██║╚════██╗    ██╗   ██╗  ██╗      ██╗   █████╗     ║
-     ║          ██║ █████╔╝    ██║   ██║  ██║      ██║  ██╔══██╗    ║
-     ║          ██║ ╚═══██╗    ██║   ██║  ██║      ██║  ███████║    ║
-     ║     ██   ██║██████╔╝    ██║   ██║  ██║      ██║  ██╔══██║    ║
-     ║     ╚█████╔╝╚═════╝     ╚██████╔╝  ███████╗ ██║  ██║  ██║    ║
-     ║      ╚════╝              ╚═════╝   ╚══════╝ ╚═╝  ╚═╝  ╚═╝    ║
-     ║                               J3OS Mode v1.0                  ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`,
         `
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          ██╗██████╗   ██████╗                                 ║
-     ║          ██║╚════██╗ ██╔═══██╗  ██╗      ██╗   █████╗        ║
-     ║          ██║ █████╔╝ ██║   ██║  ██║      ██║  ██╔══██╗       ║
-     ║       ██ ██║ ╚═══██╗ ██║   ██║  ██║      ██║  ███████║       ║
-     ║         ████║██████╔╝╚██████╔╝  ██║      ██║  ██╔══██║       ║
-     ║          ╚╝╚═╝╚═════╝  ╚═════╝   ███████╗██║  ██║  ██║       ║
-     ║                                   ╚══════╝╚═╝  ╚═╝  ╚═╝       ║
-     ║                               J3OS Mode v1.0                  ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`,
         `
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          ██╗██████╗   ██████╗ ███████╗                        ║
-     ║          ██║╚════██╗ ██╔═══██╗██╔════╝                        ║
-     ║          ██║ █████╔╝ ██║   ██║███████╗                        ║
-     ║       ██ ██║ ╚═══██╗ ██║   ██║╚════██║                        ║
-     ║         ████║██████╔╝╚██████╔╝███████║                        ║
-     ║          ╚╝╚═╝╚═════╝  ╚═════╝ ╚══════╝                       ║
      ║                                                               ║
-     ║                   JuliaOS J3OS Mode v1.0                      ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
+     ║                                                               ║
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`
     ];
@@ -3193,4 +3372,167 @@ async function checkTransactionStatus() {
         name: 'continue',
         message: 'Press Enter to continue...'
     }]);
+}
+
+// =============================================================================
+// New OpenAI Swarm Interaction Functions
+// =============================================================================
+
+async function runOpenAITask() {
+    console.log(chalk.blue('\n--- Run Task in OpenAI Swarm ---'));
+    try {
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'swarm_id',
+                message: 'Enter the OpenAI Swarm ID:',
+                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'agent_name',
+                message: 'Enter the Agent Name within the swarm:',
+                validate: input => input.trim().length > 0 ? true : 'Agent Name cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'task_prompt',
+                message: 'Enter the task prompt for the agent:',
+                validate: input => input.trim().length > 0 ? true : 'Task prompt cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'thread_id',
+                message: 'Enter existing Thread ID (optional, leave blank to create new):'
+            }
+        ]);
+
+        const { swarm_id, agent_name, task_prompt } = answers;
+        const thread_id = answers.thread_id.trim() || null; // Send null if blank
+
+        const spinner = ora('Submitting task to OpenAI swarm via backend...').start();
+
+        // Construct params array
+        const params = [swarm_id, agent_name, task_prompt];
+        if (thread_id) {
+            params.push(thread_id);
+        }
+
+        try {
+            const response = await juliaBridge.runJuliaCommand('run_openai_task', params);
+            spinner.stop();
+
+            if (response && response.error) {
+                console.error(chalk.red('\nBackend Error:'), response.error);
+            } else if (response && response.result && response.result.success) {
+                spinner.succeed('Task submitted successfully!');
+                console.log(chalk.green('\nTask Submission Details:'));
+                console.log(chalk.cyan(`  Swarm ID:    ${response.result.swarm_id}`));
+                console.log(chalk.cyan(`  Agent Name:  ${response.result.agent_name}`));
+                console.log(chalk.cyan(`  Thread ID:   ${response.result.thread_id}`));
+                console.log(chalk.cyan(`  Run ID:      ${response.result.run_id}`));
+                console.log(chalk.cyan(`  Run Status:  ${response.result.status}`));
+                console.log(chalk.yellow('\nUse "Get OpenAI Response" with the Thread ID and Run ID to check status and get results.'));
+            } else {
+                console.error(chalk.red('\nFailed to submit task. Unexpected response format:'));
+                console.log(response);
+            }
+        } catch (bridgeError) {
+            spinner.fail('Failed to communicate with backend.');
+            console.error(chalk.red('Bridge Error:'), bridgeError.message);
+        }
+
+    } catch (error) {
+        console.error(chalk.red('An error occurred while setting up the OpenAI task:'), error.message);
+    }
+
+    // Pause
+    await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
+}
+
+async function getOpenAIResponse() {
+    console.log(chalk.blue('\n--- Get Response/Status from OpenAI Run ---'));
+    try {
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'swarm_id',
+                message: 'Enter the OpenAI Swarm ID:',
+                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'thread_id',
+                message: 'Enter the Thread ID:',
+                validate: input => input.trim().length > 0 ? true : 'Thread ID cannot be empty.'
+            },
+            {
+                type: 'input',
+                name: 'run_id',
+                message: 'Enter the Run ID:',
+                validate: input => input.trim().length > 0 ? true : 'Run ID cannot be empty.'
+            }
+        ]);
+
+        const { swarm_id, thread_id, run_id } = answers;
+        const spinner = ora('Fetching response/status from backend...').start();
+
+        try {
+            const response = await juliaBridge.runJuliaCommand('get_openai_response', [swarm_id, thread_id, run_id]);
+            spinner.stop();
+
+            if (response && response.error) {
+                console.error(chalk.red('\nBackend Error:'), response.error);
+            } else if (response && response.result) {
+                const result = response.result;
+                if (result.success) {
+                    spinner.succeed(`Status fetched: ${result.status}`);
+                    console.log(chalk.green('\nRun Details:'));
+                    console.log(chalk.cyan(`  Swarm ID:    ${result.swarm_id || swarm_id}`));
+                    console.log(chalk.cyan(`  Thread ID:   ${result.thread_id || thread_id}`));
+                    console.log(chalk.cyan(`  Run ID:      ${result.run_id || run_id}`));
+                    console.log(chalk.cyan(`  Status:      ${result.status}`));
+
+                    if (result.status === 'completed' && result.response) {
+                        console.log(chalk.cyan(`\nAssistant Response:`));
+                        console.log(chalk.white(`  ${result.response.content || '(No content found)'}`));
+                        console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                    } else if (result.message) {
+                         console.log(chalk.yellow(`\nMessage: ${result.message}`));
+                    }
+
+                } else {
+                    // Handle cases where success is false (e.g., run failed)
+                     spinner.fail(`Run status: ${result.status || 'Failed'}`);
+                     console.log(chalk.red(`\nError: ${result.error || 'Failed to get response.'}`));
+                     if (result.run_details) {
+                         console.log(chalk.gray('Run Details:'), JSON.stringify(result.run_details, null, 2));
+                     }
+                }
+            } else {
+                console.error(chalk.red('\nFailed to get response. Unexpected response format:'));
+                console.log(response);
+            }
+        } catch (bridgeError) {
+            spinner.fail('Failed to communicate with backend.');
+            console.error(chalk.red('Bridge Error:'), bridgeError.message);
+        }
+
+    } catch (error) {
+        console.error(chalk.red('An error occurred while setting up the OpenAI response request:'), error.message);
+    }
+
+    // Pause
+    await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
+}
+
+// Helper function to get agent capabilities based on type
+function getAgentCapabilities(type) {
+    const capabilities = {
+        'Trading': ['market_analysis', 'order_execution', 'risk_management'],
+        'Analysis': ['data_processing', 'pattern_recognition', 'prediction'],
+        'Execution': ['order_routing', 'position_management', 'risk_control'],
+        'Monitoring': ['system_monitoring', 'alert_management', 'performance_tracking']
+    };
+    return capabilities[type] || [];
 }

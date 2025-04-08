@@ -740,7 +740,7 @@ async function checkComponentConnections() {
         const agentResult = await juliaBridge.runJuliaCommand('list_agents', []);
         
         // If we get a result (even an empty list) without error, the connection works
-        results.agent = agentResult !== undefined && agentResult.error === undefined;
+        results.agent = agentResult !== undefined && agentResult.error === null;
         
         spinner.succeed('Agent System check complete');
     } catch (error) {
@@ -756,7 +756,7 @@ async function checkComponentConnections() {
         const swarmResult = await juliaBridge.runJuliaCommand('list_swarms', []);
         
         // If we get a result (even an empty list) without error, the connection works
-        results.swarm = swarmResult !== undefined && swarmResult.error === undefined;
+        results.swarm = swarmResult !== undefined && swarmResult.error === null;
         
         spinner.succeed('Swarm System check complete');
     } catch (error) {

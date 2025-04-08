@@ -29,34 +29,44 @@ echo "✅ Julia is installed (version $JULIA_VERSION)"
 # Check for bridge files
 if [ ! -d "$BRIDGE_DIR" ]; then
     echo "❌ Bridge directory not found at $BRIDGE_DIR"
-    echo "Running ../setup_julia_bridge.sh to set up the bridge..."
-    cd "$PROJECT_ROOT" && ./setup_julia_bridge.sh
+    echo "Running setup script from scripts directory..."
+    cd "$PROJECT_ROOT" && ./scripts/setup_julia_bridge.sh
 fi
 
 # Kill any existing server
-pkill -f "julia simple_server.jl" || true
+pkill -f "julia julia_server.jl" || true
+
+# Export variables from .env file before starting Julia
+if [ -f ".env" ]; then
+  echo "Loading environment variables from .env..."
+  set -a # Automatically export all variables defined from now on
+  source .env
+  set +a # Stop automatically exporting variables
+else
+  echo "Warning: .env file not found. Skipping environment variable loading."
+fi
 
 # Start the server
 echo "Starting Julia server..."
-cd "$JULIA_DIR" && julia simple_server.jl &
+cd "$JULIA_DIR" && julia julia_server.jl
 
-# Wait for server to start
-echo "Waiting for server to start..."
-sleep 2
-
-# Test server
-echo "Testing server health..."
-HEALTH_CHECK=$(curl -s http://localhost:8052/health)
-if [ $? -eq 0 ]; then
-    echo "✅ Server is running: $HEALTH_CHECK"
-    echo "Server is running in the background (PID: $!)"
-    echo "To stop the server: pkill -f 'julia simple_server.jl'"
-else
-    echo "❌ Server failed to start. Check the logs."
-    exit 1
-fi
-
-echo "===================================="
-echo "Server running at http://localhost:8052"
-echo "Health check available at http://localhost:8052/health"
-echo "====================================" 
+# Comment out waiting and health check as server runs in foreground
+# echo "Waiting for server to start..."
+# sleep 2
+#
+# # Test server
+# echo "Testing server health..."
+# HEALTH_CHECK=$(curl -s http://localhost:8052/health)
+# if [ $? -eq 0 ]; then
+#     echo "✅ Server is running: $HEALTH_CHECK"
+#     # echo "Server is running in the background (PID: $!)" # No longer in background
+#     # echo "To stop the server: pkill -f 'julia julia_server.jl'" # Use Ctrl+C
+# else
+#     echo "❌ Server failed to start. Check the logs."
+#     exit 1
+# fi
+#
+# echo "====================================="
+# echo "Server running at http://localhost:8052" # Will likely show logs instead
+# echo "Health check available at http://localhost:8052/health"
+# echo "=====================================" 
