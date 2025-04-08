@@ -1,238 +1,188 @@
 # JuliaOS CLI Documentation
 
-This guide provides detailed information about using the JuliaOS Command Line Interface (CLI).
-
-## Installation
-
-The JuliaOS CLI can be installed via npm:
-
-```bash
-npm install -g juliaos-cli
-```
+This guide provides detailed information about using the JuliaOS Command Line Interface (CLI) to interact with the Julia backend server.
 
 ## Prerequisites
 
-To use the JuliaOS CLI, you need:
+To run JuliaOS and the interactive CLI, you need:
 
-- [Julia](https://julialang.org/downloads/) 1.8 or later
-- [Node.js](https://nodejs.org/) 14 or later
+- [Julia](https://julialang.org/downloads/) **1.8 or later** (ensure the `julia` command is in your system's PATH)
+- [Node.js](https://nodejs.org/) **18 or later** (ensure `node` and `npm` are in your system's PATH)
+- A **bash-compatible shell** (standard on Linux and macOS)
+- Standard command-line utilities like `git`, `pkill`, `curl` (optional but helpful).
+- **Internet access** is required during the first run to download Julia dependencies.
+- *(Potentially)* System build tools (`gcc`, `make`, etc.) depending on your OS and installed Julia packages.
+
+## Setup
+
+1.  **Clone the Repository:**
+    ```bash
+    git clone <repository-url>
+    cd JuliaOS 
+    ```
+2.  **Install Node.js Dependencies:**
+    ```bash
+    npm install
+    ```
+    This installs `inquirer`, `chalk`, `ora`, and other required packages for the interactive CLI script.
+3.  **Julia Dependencies:** The necessary Julia packages are automatically installed the *first* time you run the Julia server using the `start.sh` script (see Usage below).
 
 ## Usage
 
-### Interactive Mode
+Running JuliaOS involves two main steps in separate terminals:
 
-Launch the interactive CLI with:
+**1. Start the Julia Backend Server:**
 
-```bash
-juliaos
-```
+   - Navigate to the Julia directory:
+     ```bash
+     cd julia
+     ```
+   - Make the start script executable (only needed once):
+     ```bash
+     chmod +x start.sh
+     ```
+   - Run the start script:
+     ```bash
+     ./start.sh
+     ```
+   - **Important:** The first time you run this, it will install all necessary Julia packages and might take several minutes. Subsequent starts will be much faster.
+   - Leave this terminal running. It displays the server logs. Use `Ctrl+C` to stop the server.
 
-This opens an interactive menu-driven interface where you can:
-- Manage agents and swarms
-- Configure settings
-- View system information
+**2. Run the Interactive CLI:**
 
-### Command Mode
-
-For scripting and automation, you can use command mode:
-
-```bash
-juliaos agents list
-juliaos swarms create --name "MySwarm" --type "Trading"
-```
+   - Open a **new terminal window**.
+   - Navigate to the project root directory (`JuliaOS`).
+   - Run the interactive script using Node.js:
+     ```bash
+     node scripts/interactive.cjs
+     ```
+   - This will launch the menu-driven interface where you can interact with the running Julia backend to manage agents, swarms, wallets, etc.
 
 ## Command Reference
+
+**Note:** The following commands describe the *backend functionality* available through the Julia server API. Currently, these are primarily accessed via the menu options in the `scripts/interactive.cjs` script, not as direct command-line arguments to that script.
 
 ### Agent Commands
 
 #### List Agents
 
-```bash
-juliaos agents list
-```
-
-Lists all agents in the system with their status and basic information.
+- **Menu Option:** `Agent Management` -> `List Agents`
+- **Backend Command:** `list_agents`
+- Lists all agents registered with the Julia backend.
 
 #### Create Agent
 
-```bash
-juliaos agents create --name "MyAgent" --type "Trading" --config '{"parameter": "value"}'
-```
+- **Menu Option:** `Agent Management` -> `Create Agent`
+- **Backend Command:** `create_agent`
+- Creates a new agent instance in the Julia backend.
 
-Creates a new agent with the specified parameters.
+#### Get Agent Details (Not currently in menu)
 
-#### Get Agent Details
-
-```bash
-juliaos agents get <agent-id>
-```
-
-Shows detailed information about a specific agent.
+- **Backend Command:** `get_agent_state` (example)
+- Shows detailed information about a specific agent.
 
 #### Start Agent
 
-```bash
-juliaos agents start <agent-id>
-```
-
-Starts a specific agent.
+- **Menu Option:** `Agent Management` -> `Start Agent`
+- **Backend Command:** `update_agent` (with status update)
+- Starts a specific agent process in the backend.
 
 #### Stop Agent
 
-```bash
-juliaos agents stop <agent-id>
-```
-
-Stops a specific agent.
+- **Menu Option:** `Agent Management` -> `Stop Agent`
+- **Backend Command:** `update_agent` (with status update)
+- Stops a specific agent process in the backend.
 
 #### Delete Agent
 
-```bash
-juliaos agents delete <agent-id>
-```
-
-Deletes a specific agent.
+- **Menu Option:** `Agent Management` -> `Delete Agent`
+- **Backend Command:** `delete_agent`
+- Deletes a specific agent from the backend.
 
 ### Swarm Commands
 
+*(Similar structure - map menu options to backend commands)*
+
 #### List Swarms
 
-```bash
-juliaos swarms list
-```
-
-Lists all swarms in the system with their status and basic information.
+- **Menu Option:** `Swarm Management` -> `List Swarms`
+- **Backend Command:** `list_swarms`
 
 #### Create Swarm
 
-```bash
-juliaos swarms create --name "MySwarm" --type "Trading" --algorithm "PSO" --config '{"parameter": "value"}'
-```
+- **Menu Option:** `Swarm Management` -> `Create Swarm` (Supports Julia Native & OpenAI)
+- **Backend Command:** `SwarmManager.create_swarm` (Julia Native), `OpenAISwarmAdapter.create_openai_swarm` (OpenAI)
 
-Creates a new swarm with the specified parameters.
+#### Get Swarm Details (Not currently in menu)
 
-#### Get Swarm Details
+- **Backend Command:** `get_swarm_state` (example)
 
-```bash
-juliaos swarms get <swarm-id>
-```
+#### Add Agent to Swarm (Not currently in menu)
 
-Shows detailed information about a specific swarm.
+- **Backend Command:** *(Requires implementation)*
 
-#### Add Agent to Swarm
+#### Remove Agent from Swarm (Not currently in menu)
 
-```bash
-juliaos swarms add-agent <swarm-id> <agent-id>
-```
-
-Adds an agent to a swarm.
-
-#### Remove Agent from Swarm
-
-```bash
-juliaos swarms remove-agent <swarm-id> <agent-id>
-```
-
-Removes an agent from a swarm.
+- **Backend Command:** *(Requires implementation)*
 
 #### Start Swarm
 
-```bash
-juliaos swarms start <swarm-id>
-```
-
-Starts a specific swarm.
+- **Menu Option:** `Swarm Management` -> `Start Swarm`
+- **Backend Command:** `update_swarm` (with status update)
 
 #### Stop Swarm
 
-```bash
-juliaos swarms stop <swarm-id>
-```
-
-Stops a specific swarm.
+- **Menu Option:** `Swarm Management` -> `Stop Swarm`
+- **Backend Command:** `update_swarm` (with status update)
 
 #### Delete Swarm
 
-```bash
-juliaos swarms delete <swarm-id>
-```
+- **Menu Option:** `Swarm Management` -> `Delete Swarm`
+- **Backend Command:** `delete_swarm`
 
-Deletes a specific swarm.
+### OpenAI Swarm Interaction (New)
 
-### System Commands
+- **Menu Options (To be added):**
+    - `Swarm Management` -> `Run OpenAI Task`
+    - `Swarm Management` -> `Get OpenAI Response`
+- **Backend Commands:**
+    - `OpenAISwarmAdapter.run_openai_task`
+    - `OpenAISwarmAdapter.get_openai_response`
 
-#### System Status
+### System Commands (Accessed via Main Menu / Diagnostics)
 
-```bash
-juliaos system status
-```
+#### System Status / Diagnostics
 
-Shows the status of the JuliaOS system components.
+- **Menu Option:** `Run System Checks`, `Component Diagnostics`
+- Shows the status of the JuliaOS system components by sending various health/list commands to the backend.
 
-#### Storage Status
+#### Storage Status (Not currently directly exposed)
 
-```bash
-juliaos system storage
-```
+- Backend functionality exists within `Storage.jl`.
 
-Shows the status of local and Web3 storage systems.
+#### Web3 Sync (Not currently implemented)
 
-#### Web3 Sync
-
-```bash
-juliaos system sync
-```
-
-Synchronizes data between local and Web3 storage.
+- Placeholder for future Web3 storage features.
 
 ## Configuration
 
-The JuliaOS CLI can be configured using a configuration file or environment variables.
-
-### Configuration File
-
-Create a `.juliaosrc` file in your home directory:
-
-```json
-{
-  "server": {
-    "url": "http://localhost:8052",
-    "autoStart": true
-  },
-  "storage": {
-    "syncEnabled": true,
-    "syncInterval": 3600
-  }
-}
-```
-
-### Environment Variables
-
-You can also use environment variables to configure the CLI:
-
-```bash
-export JULIAOS_SERVER_URL=http://localhost:8052
-export JULIAOS_AUTO_START_SERVER=true
-export JULIAOS_SYNC_ENABLED=true
-```
+- **Julia Backend:** Configured primarily via the `.env` file located in the `julia/` directory. This file contains API keys, database paths, etc.
+- **Interactive CLI:** Currently uses hardcoded defaults (e.g., server URL `http://localhost:8052`). Configuration options might be added in the future.
 
 ## Troubleshooting
 
-### Server Connection Issues
+### Julia Server Issues (`./start.sh`)
 
-If you encounter server connection issues:
+- **Errors during first run:** Check internet connection, ensure Julia has permissions to write to its package directories (e.g., `~/.julia`), verify necessary build tools are installed if package building fails. Check the terminal output for specific Julia `Pkg` errors.
+- **Server fails to start:** Check the logs in the `julia/logs` directory and the terminal output from `start.sh`. Ensure port `8052` is not already in use. Verify the `.env` file has correct settings if used.
+- **`pkill` command not found:** Install `procps` or equivalent package for your OS.
 
-1. Make sure Julia is installed and in your PATH
-2. Check if the server is running with `juliaos system status`
-3. Try starting the server manually with `juliaos server start`
+### Interactive CLI Issues (`node scripts/interactive.cjs`)
 
-### Path Issues
-
-If you encounter path-related errors:
-
-1. Try running the CLI from the root of the JuliaOS repository
-2. Check if the `JULIAOS_HOME` environment variable is set correctly
-3. Reinstall the CLI with `npm install -g juliaos-cli`
+- **Cannot connect / Connection Refused:** Ensure the Julia server is running (check the *other* terminal running `./start.sh`). Verify the server started successfully and is listening on port 8052. Check network settings or firewalls.
+- **Errors after selecting a menu option:** Check the terminal output in *both* the CLI window and the Julia server window for specific error messages. The error might originate from the Julia backend.
+- **`Component Diagnostics` show errors:** If components show disconnected after fixing previous issues, ensure the Julia server is fully running and hasn't crashed. Check server logs.
+- **Node.js errors (`require` not found, etc.):** Ensure you ran `npm install` in the project root directory. Check your Node.js version (`node -v`).
 
 ## Further Resources
 

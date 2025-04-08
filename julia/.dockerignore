@@ -1,0 +1,16 @@
+# Ignore log files
+logs/
+
+# Ignore local data
+data/
+
+# Ignore Git files
+.git
+.gitignore
+
+# Ignore Node modules if present
+node_modules/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db 
