@@ -284,6 +284,21 @@ docs/_static/
 docs/_templates/
 docs/_themes/
 
+# Ignore all other .md files, except root README.md
+**/*.md
+!/README.md
+
+# Ignore specific root-level .md files
+/CONTRIBUTING.md
+/GITHUB_PREPARATION.md
+/LANGCHAIN_INTEGRATION_PLAN.md
+/MAINTENANCE.md
+/SECURITY.md
+/SWARM_ALGORITHMS_IMPLEMENTATION.md
+
+# Ignore context file
+juliaos-context.mdc
+
 # Local Development
 local/
 dev/
@@ -420,7 +435,3 @@ GITHUB_PREPARATION.md
 # Any remaining environment files that might be missed
 **/*.env
 **/settings.json
-
-# Documentation Files (Ignore all .md except root README)
-**/*.md
-!/README.md
