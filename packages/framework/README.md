@@ -1,6 +1,6 @@
 # JuliaOS Framework
 
-The JuliaOS Framework is a comprehensive suite of Julia modules for building blockchain-powered AI agent and swarm applications. This framework provides the building blocks to create, manage, and deploy intelligent agents that can operate across multiple blockchain networks.
+The JuliaOS Framework is a comprehensive suite of modules for building blockchain-powered AI agent and swarm applications. This framework provides the building blocks to create, manage, and deploy intelligent agents that can operate across multiple blockchain networks.
 
 ## Framework Modules
 
@@ -11,82 +11,97 @@ The framework consists of the following modules:
 - **Bridge**: Communicate with the JuliaOS backend server
 - **Wallet**: Connect to blockchain wallets across different networks
 - **Blockchain**: Interact with blockchain networks and smart contracts
-- **Core**: Common utilities and shared functionality
 - **Utils**: Helper functions and utilities
 
 ## Installation
 
-To use the entire framework in your Julia project:
+To use the entire framework in your project:
 
-```julia
-import Pkg
-Pkg.add(url="https://github.com/juliaos/framework")
+```bash
+# Clone the repository
+git clone https://github.com/Juliaoscode/JuliaOS.git
+cd JuliaOS
+
+# Install dependencies
+npm install
 ```
 
-Or install individual modules:
+Or use the framework modules directly:
 
-```julia
-# Install just the Agents module
-Pkg.add(url="https://github.com/juliaos/framework", subdir="packages/framework/agents")
-
-# Install just the Wallet module
-Pkg.add(url="https://github.com/juliaos/framework", subdir="packages/framework/wallet")
+```javascript
+// Import the framework modules
+const { agents } = require('./packages/framework/agents');
+const { wallet } = require('./packages/framework/wallet');
 ```
 
 ## Quick Start
 
-```julia
-# Use the JuliaOS Framework
-using JuliaOS.Agents
-using JuliaOS.Swarms
-using JuliaOS.Wallet
-using JuliaOS.Bridge
+```javascript
+// Import required modules
+const { JuliaBridge } = require('./packages/julia-bridge');
+const { AgentManager } = require('./packages/framework/agents');
+const { SwarmManager } = require('./packages/framework/swarms');
+const { WalletManager } = require('./packages/framework/wallet');
 
-# Connect to the JuliaOS backend
-bridge_config = BridgeConfig(host="localhost", port=8052)
-connected = connect(bridge_config)
+// Initialize the Julia bridge
+const juliaBridge = new JuliaBridge({
+  host: 'localhost',
+  port: 8052
+});
 
-if connected
-    # Create an agent
-    agent_config = AgentConfig(
-        "arbitrage_agent",
-        "Arbitrage",
-        ["price_monitoring", "cross_chain_transfers"],
-        ["Ethereum", "Polygon"],
-        Dict("min_profit_threshold" => 0.02)
-    )
-    agent = createAgent(agent_config)
-    
-    # Create a swarm
-    swarm_config = SwarmConfig(
-        "arbitrage_swarm",
-        PSO(particles=30),
-        "maximize_profit",
-        Dict("risk_tolerance" => 0.5)
-    )
-    swarm = createSwarm(swarm_config)
-    
-    # Add agent to swarm
-    addAgentToSwarm(swarm.id, agent.id)
-    
-    # Connect wallet
-    wallet = connectWallet("0x742d35Cc6634C0532925a3b844Bc454e4438f44e", ETHEREUM)
-    
-    # Start swarm
-    startSwarm(swarm.id)
-end
+// Connect to the JuliaOS backend
+juliaBridge.connect().then(async (connected) => {
+  if (connected) {
+    // Create an agent manager
+    const agentManager = new AgentManager(juliaBridge);
+
+    // Create a swarm manager
+    const swarmManager = new SwarmManager(juliaBridge);
+
+    // Create a wallet manager
+    const walletManager = new WalletManager();
+
+    // Create an agent
+    const agent = await agentManager.createAgent({
+      name: 'arbitrage_agent',
+      type: 'Arbitrage',
+      skills: ['price_monitoring', 'cross_chain_transfers'],
+      chains: ['Ethereum', 'Polygon'],
+      config: { min_profit_threshold: 0.02 }
+    });
+
+    // Create a swarm
+    const swarm = await swarmManager.createSwarm({
+      name: 'arbitrage_swarm',
+      algorithm: 'PSO',
+      objective: 'maximize_profit',
+      config: { risk_tolerance: 0.5, particles: 30 }
+    });
+
+    // Add agent to swarm
+    await swarmManager.addAgentToSwarm(swarm.id, agent.id);
+
+    // Connect wallet
+    const wallet = await walletManager.connectWallet('0x742d35Cc6634C0532925a3b844Bc454e4438f44e', 'ETHEREUM');
+
+    // Start swarm
+    await swarmManager.startSwarm(swarm.id);
+  }
+});
 ```
 
 ## Prerequisites
 
-1. **Julia**: Version 1.8 or higher
-2. **JuliaOS Backend**: Running on your local machine or a remote server
+1. **Node.js**: Version 16 or higher
+2. **npm**: Version 7 or higher
+3. **Julia**: Version 1.8 or higher
+4. **JuliaOS Backend**: Running on your local machine or a remote server
 
 To start the JuliaOS backend:
 
 ```bash
-cd julia
-./start.sh
+cd scripts/server
+./run-server.sh
 ```
 
 ## Module Overview
@@ -95,81 +110,108 @@ cd julia
 
 The Agents module allows you to create and manage AI agents:
 
-```julia
-using JuliaOS.Agents
+```javascript
+const { AgentManager } = require('./packages/framework/agents');
 
-# Create an agent
-agent = createAgent(AgentConfig("arbitrage_agent", "Arbitrage", [], [], Dict()))
+// Initialize the agent manager
+const agentManager = new AgentManager(juliaBridge);
 
-# Start the agent
-startAgent(agent.id)
+// Create an agent
+const agent = await agentManager.createAgent({
+  name: 'arbitrage_agent',
+  type: 'Arbitrage',
+  skills: [],
+  chains: [],
+  config: {}
+});
 
-# Check agent status
-status = getAgentStatus(agent.id)
+// Start the agent
+await agentManager.startAgent(agent.id);
+
+// Check agent status
+const status = await agentManager.getAgentStatus(agent.id);
 ```
 
 ### Swarms
 
 The Swarms module enables agent coordination using swarm intelligence algorithms:
 
-```julia
-using JuliaOS.Swarms
+```javascript
+const { SwarmManager } = require('./packages/framework/swarms');
 
-# Create a swarm using Particle Swarm Optimization
-swarm = createSwarm(SwarmConfig(
-    "trading_swarm",
-    PSO(particles=50),
-    "maximize_profit",
-    Dict()
-))
+// Initialize the swarm manager
+const swarmManager = new SwarmManager(juliaBridge);
 
-# Start the swarm
-startSwarm(swarm.id)
+// Create a swarm using Particle Swarm Optimization
+const swarm = await swarmManager.createSwarm({
+  name: 'trading_swarm',
+  algorithm: 'PSO',
+  objective: 'maximize_profit',
+  config: { particles: 50 }
+});
+
+// Start the swarm
+await swarmManager.startSwarm(swarm.id);
 ```
 
 ### Bridge
 
 The Bridge module facilitates communication with the JuliaOS backend:
 
-```julia
-using JuliaOS.Bridge
+```javascript
+const { JuliaBridge } = require('./packages/julia-bridge');
 
-# Connect to the backend
-connect(BridgeConfig(host="localhost", port=8052))
+// Initialize the Julia bridge
+const juliaBridge = new JuliaBridge({
+  host: 'localhost',
+  port: 8052
+});
 
-# Execute a function on the backend
-response = execute("AgentSystem.getStatus", Dict("id" => "agent_123"))
+// Connect to the backend
+const connected = await juliaBridge.connect();
+
+// Execute a function on the backend
+const response = await juliaBridge.execute('AgentSystem.getStatus', { id: 'agent_123' });
 ```
 
 ### Wallet
 
 The Wallet module provides blockchain wallet management:
 
-```julia
-using JuliaOS.Wallet
+```javascript
+const { WalletManager } = require('./packages/framework/wallet');
 
-# Connect to an Ethereum wallet
-wallet = connectWallet("0x742d35Cc6634C0532925a3b844Bc454e4438f44e", ETHEREUM)
+// Initialize the wallet manager
+const walletManager = new WalletManager();
 
-# Check balance
-balances = getWalletBalance(wallet.address)
+// Connect to an Ethereum wallet
+const wallet = await walletManager.connectWallet('0x742d35Cc6634C0532925a3b844Bc454e4438f44e', 'ETHEREUM');
 
-# Send transaction (requires private key)
-sendTransaction(wallet.address, "0x...", 0.1, "ETH")
+// Check balance
+const balances = await walletManager.getWalletBalance(wallet.address);
+
+// Send transaction (requires private key)
+await walletManager.sendTransaction(wallet.address, '0x...', 0.1, 'ETH');
 ```
 
 ## Examples
 
-Each module includes examples in its respective `examples/` directory:
+Each module includes examples in its respective directory:
 
-- `agents/examples/`: Agent creation and management examples
-- `swarms/examples/`: Swarm algorithm examples
-- `bridge/examples/`: Backend communication examples
-- `wallet/examples/`: Blockchain wallet interaction examples
+- `packages/framework/agents/`: Agent creation and management examples
+- `packages/framework/swarms/`: Swarm algorithm examples
+- `packages/julia-bridge/`: Backend communication examples
+- `packages/framework/wallet/`: Blockchain wallet interaction examples
 
 ## Documentation
 
-For more detailed documentation on each module, refer to the README files in the respective module directories.
+For more detailed documentation on each module, refer to the README files in the respective module directories:
+
+- [Agents README](./agents/README.md)
+- [Swarms README](./swarms/README.md)
+- [Bridge README](./bridge/README.md)
+- [Wallet README](./wallet/README.md)
+- [Blockchain README](./blockchain/README.md)
 
 ## License
 
@@ -177,4 +219,4 @@ MIT License
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+Contributions are welcome! Please feel free to submit a Pull Request.

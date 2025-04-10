@@ -20,7 +20,7 @@ using LinearAlgebra
 using DataFrames
 
 # Include the JuliaOS module which includes all other modules
-include("src/JuliaOS.jl")
+include(joinpath(@__DIR__, "src/JuliaOS.jl"))
 
 # Import all modules from JuliaOS
 using .JuliaOS
@@ -28,6 +28,7 @@ using .JuliaOS.Storage
 using .JuliaOS.Blockchain
 using .JuliaOS.MarketData
 using .JuliaOS.Bridge
+using .JuliaOS.WormholeBridge
 using .JuliaOS.DEX
 using .JuliaOS.Algorithms
 using .JuliaOS.SwarmManager
@@ -53,7 +54,7 @@ const router = HTTP.Router()
 HTTP.register!(router, "GET", "/health", request -> begin
     # Check system health using JuliaOS functionality
     health_status = JuliaOS.check_system_health()
-    
+
     # Simplify response for API compatibility
     health_response = Dict(
         "status" => health_status["status"],
@@ -99,7 +100,7 @@ HTTP.register!(router, "POST", "/api", request -> begin
 
         # Process command using real modules
         response = process_command(command, params, id)
-        
+
         # Debug: Print response for list_agents
         if command == "list_agents"
             println("LIST_AGENTS RESPONSE: $(JSON.json(response))")
@@ -157,7 +158,7 @@ function process_command(command, params, id)
         elseif command == "create_agent"
             if length(params) < 3 error("Usage: create_agent <name> <type> <config_dict_or_json>") end
             name, type, config_input = params[1], params[2], params[3]
-            
+
             # Process config input
             local agent_config
             if isa(config_input, String)
@@ -165,10 +166,10 @@ function process_command(command, params, id)
             else
                 agent_config = config_input
             end
-            
+
             # Set agent_id for new agent
             agent_id = "agent_" * string(rand(UInt32))
-            
+
             # Create a proper AgentConfig
             agent_system_config = AgentSystem.AgentConfig(
                 agent_id,
@@ -181,19 +182,19 @@ function process_command(command, params, id)
                 get(agent_config, "update_interval", 60),
                 get(agent_config, "network_configs", Dict{String, Dict{String, Any}}())
             )
-            
+
             # Create agent in the runtime
             agent_state = AgentSystem.create_agent(agent_system_config)
-            
+
             # Also store in database
             db_result = Storage.create_agent(db, agent_id, name, type, agent_config)
-            
+
             # Combine results
             result = Dict(
                 "id" => agent_id,
                 "name" => name,
                 "type" => type,
-                "status" => agent_state.status
+                "status" => agent_state !== nothing ? agent_state.status : "Initialized"
             )
 
         elseif command == "list_agents"
@@ -208,7 +209,7 @@ function process_command(command, params, id)
                     "status" => agent.status
                 ))
             end
-            
+
             @info "[list_agents] Processed runtime agents: $(active_agents)"
 
             # If no active agents, try to get from DB
@@ -231,7 +232,7 @@ function process_command(command, params, id)
         elseif command == "get_agent_state"
             if length(params) < 1 error("Missing required parameter: agent_id") end
             agent_id = params[1]
-            
+
             # Try to get from runtime first
             if haskey(AgentSystem.ACTIVE_AGENTS, agent_id)
                 agent = AgentSystem.ACTIVE_AGENTS[agent_id]
@@ -254,19 +255,60 @@ function process_command(command, params, id)
         elseif command == "update_agent"
             if length(params) < 2 error("Usage: update_agent <agent_id> <updates_dict>") end
             agent_id, updates = params[1], params[2]
-            
-            # Update in runtime if active
-            if haskey(AgentSystem.ACTIVE_AGENTS, agent_id)
+
+            @info "Updating agent $agent_id with updates: $updates"
+
+            # Check if agent exists in runtime
+            agent_in_runtime = haskey(AgentSystem.ACTIVE_AGENTS, agent_id)
+
+            # If not in runtime, try to load from database
+            if !agent_in_runtime
+                @info "Agent $agent_id not found in runtime, checking database"
+                db_agent = Storage.get_agent(db, agent_id)
+
+                if db_agent !== nothing
+                    @info "Found agent $agent_id in database, loading into runtime"
+                    # Create agent config from DB data
+                    agent_config = AgentSystem.AgentConfig(
+                        id=db_agent["id"],
+                        name=db_agent["name"],
+                        agent_type=db_agent["type"],
+                        capabilities=get(db_agent, "capabilities", String[]),
+                        networks=get(db_agent, "networks", String[]),
+                        max_memory=get(db_agent, "max_memory", 1024),
+                        max_skills=get(db_agent, "max_skills", 10),
+                        update_interval=get(db_agent, "update_interval", 60),
+                        parameters=get(db_agent, "parameters", Dict{String, Any}())
+                    )
+
+                    # Create agent in runtime
+                    AgentSystem.create_agent(agent_config)
+                    agent_in_runtime = true
+                else
+                    @warn "Agent $agent_id not found in database"
+                    error("Agent not found: $agent_id")
+                end
+            end
+
+            # Now update the agent in runtime
+            if agent_in_runtime
                 agent = AgentSystem.ACTIVE_AGENTS[agent_id]
-                
+
                 # Apply updates (basic fields only)
                 if haskey(updates, "status")
-                    AgentSystem.update_agent_status(agent_id, updates["status"])
+                    status = updates["status"]
+                    @info "Updating agent $agent_id status to $status"
+                    success = AgentSystem.update_agent_status(agent_id, status)
+
+                    if !success
+                        @warn "Failed to update agent $agent_id status to $status"
+                        error("Failed to update agent status")
+                    end
                 end
-                
+
                 # Apply other updates as needed
                 # TODO: Add more update logic for other fields
-                
+
                 # Get updated state
                 agent = AgentSystem.ACTIVE_AGENTS[agent_id]
                 result = Dict(
@@ -274,40 +316,42 @@ function process_command(command, params, id)
                     "name" => agent.config.name,
                     "status" => agent.status
                 )
+
+                # Also update in DB
+                Storage.update_agent(db, agent_id, Dict("status" => agent.status))
             else
-                # Update in DB if not in memory
-                result = Storage.update_agent(db, agent_id, updates)
+                error("Failed to load agent $agent_id into runtime")
             end
 
         elseif command == "delete_agent"
             if length(params) < 1 error("Missing required parameter: agent_id") end
             agent_id = params[1]
-            
+
             # Delete from runtime if active
             if haskey(AgentSystem.ACTIVE_AGENTS, agent_id)
                 AgentSystem.delete_agent(agent_id)
             end
-            
+
             # Also delete from DB
             db_result = Storage.delete_agent(db, agent_id)
-            
+
             result = Dict("id" => agent_id, "deleted" => true)
 
         # === Swarm Commands (Real Implementation) ===
         elseif command == "create_swarm"
             if length(params) < 1 error("Missing required parameter: config_dict") end
             config_input = params[1]
-            
+
             # Generate ID and extract basic info
             swarm_id = "swarm_" * string(rand(UInt32))
             name = get(config_input, "name", "UnnamedSwarm_$(swarm_id)")
             type = get(config_input, "type", "Trading")
             algorithm_info = get(config_input, "algorithm", Dict("type"=>"pso"))
-            
+
             # Get chain and DEX info
             chain = get(config_input, "chain", "ethereum")
             dex = get(config_input, "dex", "uniswap-v3")
-            
+
             # Create SwarmConfig for runtime
             swarm_config = SwarmManager.SwarmConfig(
                 name=name,
@@ -316,13 +360,13 @@ function process_command(command, params, id)
                 num_iterations=get(config_input, "num_iterations", 50),
                 trading_pairs=get(config_input, "trading_pairs", ["ETH/USDT"])
             )
-            
+
             # Create swarm in runtime
             swarm_state = AgentSystem.create_swarm(swarm_config, chain, dex)
-            
+
             # Also save to DB
             db_result = Storage.create_swarm(db, swarm_id, name, type, JSON.json(algorithm_info), JSON.json(config_input))
-            
+
             result = Dict(
                 "id" => swarm_id,
                 "name" => name,
@@ -333,7 +377,7 @@ function process_command(command, params, id)
         elseif command == "list_swarms"
             # Get real swarms from AgentSystem and DB
             active_swarms = []
-            
+
             # First from runtime
             for (name, swarm) in AgentSystem.ACTIVE_SWARMS
                 push!(active_swarms, Dict(
@@ -343,7 +387,7 @@ function process_command(command, params, id)
                     "status" => swarm.status
                 ))
             end
-            
+
             @info "[list_swarms] Processed runtime swarms: $(active_swarms)"
 
             # If no active swarms, try to get from DB
@@ -366,22 +410,22 @@ function process_command(command, params, id)
         elseif command == "start_swarm"
             if length(params) < 1 error("Missing required parameter: swarm_name (runtime ID)") end
             swarm_name = params[1]
-            
+
             # Get runtime state
             swarm_state = AgentSystem.get_swarm_state(swarm_name)
             if swarm_state === nothing
                 error("Swarm not found: $swarm_name")
             end
-            
+
             # Start the swarm using SwarmManager
             if swarm_state.status != "active"
                 SwarmManager.start_swarm!(swarm_state.swarm_object)
                 AgentSystem.update_swarm_status(swarm_name, "active")
             end
-            
+
             # Get updated state
             swarm_state = AgentSystem.get_swarm_state(swarm_name)
-            
+
             result = Dict(
                 "id" => swarm_name,
                 "status" => swarm_state.status
@@ -390,22 +434,22 @@ function process_command(command, params, id)
         elseif command == "stop_swarm"
             if length(params) < 1 error("Missing required parameter: swarm_name") end
             swarm_name = params[1]
-            
+
             # Get runtime state
             swarm_state = AgentSystem.get_swarm_state(swarm_name)
             if swarm_state === nothing
                 error("Swarm not found: $swarm_name")
             end
-            
+
             # Stop the swarm
             if swarm_state.status == "active"
                 SwarmManager.stop_swarm!(swarm_state.swarm_object)
                 AgentSystem.update_swarm_status(swarm_name, "inactive")
             end
-            
+
             # Get updated state
             swarm_state = AgentSystem.get_swarm_state(swarm_name)
-            
+
             result = Dict(
                 "id" => swarm_name,
                 "status" => swarm_state.status
@@ -427,7 +471,7 @@ function process_command(command, params, id)
         elseif command == "create_openai_swarm"
             if length(params) < 1 error("Missing required parameter: config") end
             config = params[1]
-            
+
             # Create OpenAI swarm
             result = OpenAISwarmAdapter.create_openai_swarm(config)
 
@@ -438,7 +482,7 @@ function process_command(command, params, id)
             agent_name = params[2]
             task_prompt = params[3]
             thread_id = length(params) >= 4 ? params[4] : nothing
-            
+
             # Call the function, passing optional thread_id as a keyword argument
             result = OpenAISwarmAdapter.run_openai_task(swarm_id, agent_name, task_prompt; thread_id=thread_id)
 
@@ -448,9 +492,22 @@ function process_command(command, params, id)
             swarm_id = params[1]
             thread_id = params[2]
             run_id = params[3]
-            
+
             result = OpenAISwarmAdapter.get_openai_response(swarm_id, thread_id, run_id)
-            
+
+        # === Bridge Commands ===
+        elseif haskey(Bridge.command_handlers, command)
+            # Use the registered command handler
+            handler = Bridge.command_handlers[command]
+
+            # Handle different parameter types
+            if length(params) == 1 && isa(params[1], Dict)
+                # If there's a single dictionary parameter, pass it directly
+                result = handler(params[1])
+            else
+                # Otherwise, pass all parameters
+                result = handler(params...)
+            end
         else
             # Unknown command
             error("Unknown command: $command")
@@ -485,26 +542,26 @@ HTTP.register!(router, "GET", "/ws", request -> begin
     return WebSockets.websocket_handler(request) do ws
         client_id = string(UInt(objectid(ws)))
         ws_connections[client_id] = ws
-        
+
         @info "WebSocket connected, ID: $client_id"
-        
+
         try
             while !eof(ws)
                 msg = String(WebSockets.receive(ws))
                 @info "WebSocket message received: $msg"
-                
+
                 # Parse message
                 message = JSON.parse(msg)
-                
+
                 # Process command
                 if haskey(message, "command")
                     command = message["command"]
                     params = get(message, "params", [])
                     id = get(message, "id", string(rand(UInt32)))
-                    
+
                     # Process command
                     response = process_command(command, params, id)
-                    
+
                     # Send response
                     WebSockets.send(ws, JSON.json(response))
                 end
@@ -525,7 +582,7 @@ function main()
     try
         # Initialize JuliaOS
         JuliaOS.initialize_system()
-        
+
         println("Starting JuliaOS Unified Server on http://$HOST:$PORT...")
         println("Using database at: $(Storage.DB_PATH)")
         println("Registered endpoints: GET /health, POST /api, GET /ws")
@@ -541,4 +598,4 @@ function main()
 end
 
 # Run main function
-main() 
+main()

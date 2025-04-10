@@ -42,29 +42,73 @@ export class ChainlinkPriceFeed {
     // Check cache first
     const cachedData = this.cache.get(token.address);
     if (cachedData && Date.now() - cachedData.timestamp < this.cacheTimeout) {
+      logger.info(`Using cached price data for ${token.symbol}`);
       return cachedData;
     }
 
     try {
-      // In a real implementation, we would:
-      // 1. Call the Chainlink feed program
-      // 2. Get the latest round data
-      // 3. Calculate the price with proper decimals
-      // 4. Validate the price confidence
-      // 5. Apply circuit breakers if needed
-
-      // For now, return mock data
-      const mockData: ChainlinkPriceData = {
-        price: 100.50, // Mock SOL/USD price
-        timestamp: Date.now(),
-        roundId: Math.floor(Math.random() * 1000000),
-        confidence: 0.95
+      // Create a contract instance for the Chainlink price feed
+      const feedContract = {
+        address: feedAddress.toString(),
+        abi: [
+          'function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+          'function decimals() external view returns (uint8)'
+        ]
       };
 
-      this.cache.set(token.address, mockData);
-      return mockData;
+      const dataFeed = new (this.connection.provider as any).eth.Contract(
+        feedContract.abi,
+        feedContract.address
+      );
+
+      // Get the latest round data from the Chainlink feed
+      logger.info(`Fetching latest round data for ${token.symbol} from Chainlink feed ${feedAddress.toString()}`);
+      const roundData = await dataFeed.methods.latestRoundData().call();
+
+      // Get the number of decimals for this feed
+      const decimals = await dataFeed.methods.decimals().call();
+
+      // Calculate the price with proper decimals
+      const price = parseFloat(roundData.answer) / Math.pow(10, decimals);
+
+      // Validate the data
+      const updatedAt = parseInt(roundData.updatedAt) * 1000; // Convert to milliseconds
+      const now = Date.now();
+      const dataAge = now - updatedAt;
+
+      // Check if the data is too old (more than 1 hour)
+      if (dataAge > 3600000) {
+        logger.warn(`Chainlink data for ${token.symbol} is stale (${dataAge / 1000}s old)`);
+      }
+
+      // Calculate confidence based on data age (1.0 for fresh data, decreasing as data gets older)
+      const confidence = Math.max(0.5, 1.0 - (dataAge / 7200000)); // Minimum 0.5 confidence, decreasing over 2 hours
+
+      // Create the price data object
+      const priceData: ChainlinkPriceData = {
+        price,
+        timestamp: now,
+        roundId: parseInt(roundData.roundId),
+        confidence
+      };
+
+      // Cache the data
+      this.cache.set(token.address, priceData);
+      logger.info(`Updated price for ${token.symbol}: $${price.toFixed(2)} (confidence: ${(confidence * 100).toFixed(1)}%)`);
+
+      return priceData;
     } catch (error) {
       logger.error(`Error fetching Chainlink price for ${token.address}: ${error}`);
+
+      // If we have cached data, return it with reduced confidence
+      if (cachedData) {
+        logger.warn(`Falling back to cached data for ${token.symbol} with reduced confidence`);
+        return {
+          ...cachedData,
+          confidence: Math.max(0.1, cachedData.confidence * 0.5) // Reduce confidence by half, minimum 0.1
+        };
+      }
+
       throw error;
     }
   }
@@ -74,14 +118,38 @@ export class ChainlinkPriceFeed {
     tokenOut: Token
   ): Promise<number> {
     try {
+      // Try to get direct price feed if available (e.g., ETH/BTC)
+      const pairKey = `${tokenIn.address}_${tokenOut.address}`;
+      const reversePairKey = `${tokenOut.address}_${tokenIn.address}`;
+
+      // Check if we have a direct feed for this pair
+      if (this.feeds.has(pairKey)) {
+        const directPrice = await this.getPrice({ ...tokenIn, address: pairKey });
+        return directPrice.price;
+      }
+
+      // Check if we have a reverse feed for this pair
+      if (this.feeds.has(reversePairKey)) {
+        const reversePrice = await this.getPrice({ ...tokenOut, address: reversePairKey });
+        return 1 / reversePrice.price;
+      }
+
+      // If no direct feed, try to calculate via USD
       const priceIn = await this.getPrice(tokenIn);
       const priceOut = await this.getPrice(tokenOut);
 
       // Calculate the price ratio
-      return priceIn.price / priceOut.price;
+      const ratio = priceIn.price / priceOut.price;
+
+      // Calculate the confidence of this derived price
+      const combinedConfidence = priceIn.confidence * priceOut.confidence;
+
+      logger.info(`Calculated ${tokenIn.symbol}/${tokenOut.symbol} price: ${ratio.toFixed(6)} (confidence: ${(combinedConfidence * 100).toFixed(1)}%)`);
+
+      return ratio;
     } catch (error) {
       logger.error(`Error calculating price between tokens: ${error}`);
       throw error;
     }
   }
-} 
+}

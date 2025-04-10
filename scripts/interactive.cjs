@@ -16,29 +16,23 @@
 // =============================================================================
 const inquirer = require('inquirer');
 const chalk = require('chalk');
-const figlet = require('figlet');
 const ora = require('ora');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { fileURLToPath } = require('url');
-const { dirname } = require('path');
 const dotenv = require('dotenv');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 // Update paths to point to the correct locations
 const { JuliaBridge } = require('../packages/julia-bridge/dist/index'); // Adjusted path
 const { WalletManager } = require('../packages/wallets/dist/index');    // Adjusted path
 const { v4: uuidv4 } = require('uuid'); // Added for generating unique IDs
 const { ethers } = require('ethers'); // Import ethers
 
-const execAsync = promisify(exec);
-
 // Initialize the JuliaBridge and WalletManager
 let juliaBridge;
 try {
     juliaBridge = new JuliaBridge({
-        apiUrl: process.env.JULIA_API_URL || 'http://localhost:8052/api/command', // Use env var
+        apiUrl: process.env.JULIA_API_URL || 'http://localhost:8052/api', // Use env var
+        healthUrl: process.env.JULIA_HEALTH_URL || 'http://localhost:8052/health',
         useWebSocket: false,
         useExistingServer: true  // Use existing server instead of starting a new one
     });
@@ -86,7 +80,6 @@ async function connectWallet() {
         ]);
 
         let providerName = null;
-        let isNodeProvider = false;
 
         if (mode === 'Address Only (Read-only)') {
             // ... (existing read-only logic remains largely the same) ...
@@ -249,8 +242,8 @@ async function disconnectWallet() {
 
     try {
         const previousAddress = state.address;
-        const previousChain = state.chain;
-        
+        const previousChain = state.chainId;
+
         // Reset wallet state
         walletManager.state = {
             isConnected: false,
@@ -260,7 +253,7 @@ async function disconnectWallet() {
             readOnly: false,
             transactions: []
         };
-        
+
         console.log(chalk.green('Wallet disconnected successfully!'));
         console.log(chalk.cyan('Disconnected address:'), previousAddress);
         console.log(chalk.cyan('Disconnected chain:'), previousChain);
@@ -273,17 +266,18 @@ async function checkWallet() {
     const state = walletManager.getState();
     if (state.isConnected) {
         const mode = state.readOnly ? 'Read-only' : 'Full Access';
-        return chalk.green(`Connected (${state.chain}) [${mode}] ✅`);
+        return chalk.green(`Connected (${state.chainId}) [${mode}] ✅`);
     }
     return chalk.yellow('Disconnected ⚠️');
 }
 
+// Function for future use
 async function getWalletBalance() {
     const state = walletManager.getState();
     if (!state.isConnected) {
         return chalk.red('Wallet not connected');
     }
-    
+
     // Read-only mode still doesn't fetch balance
     if (state.readOnly) {
         return chalk.yellow('Balance not available in read-only mode');
@@ -316,14 +310,14 @@ async function mainMenu() {
                 name: 'action',
                 message: '🎮 Choose a management area:',
                 choices: [
-                    '👤 Agent Management',
-                    '🐝 Swarm Management',
-                    '⛓️ Cross-Chain Hub',
-                    '🔑 API Keys Management',
-                    '⚙️ System Configuration',
-                    '📊 Performance Metrics',
-                    '🔍 Run System Checks',
-                    '👋 Exit'
+                    '👤  Agent Management',
+                    '🐝  Swarm Management',
+                    '⛓️   Cross-Chain Hub',
+                    '🔑  API Keys Management',
+                    '⚙️   System Configuration',
+                    '📊  Performance Metrics',
+                    '🔍  Run System Checks',
+                    '👋  Exit'
                 ],
                 pageSize: 10 // Ensure all options are visible without scrolling
             }
@@ -331,7 +325,7 @@ async function mainMenu() {
 
         // Extract the action text without emoji
         const actionWithoutEmoji = action.substring(action.indexOf(' ') + 1);
-        
+
         // Show a loading animation when an action is selected
         if (actionWithoutEmoji !== 'Exit') {
             const spinner = ora({
@@ -339,12 +333,15 @@ async function mainMenu() {
                 spinner: 'dots',
                 color: 'cyan'
             }).start();
-            
+
             await new Promise(resolve => setTimeout(resolve, 500));
             spinner.stop();
         }
 
-        switch (actionWithoutEmoji) {
+        // Log the action for debugging
+        console.log(`Selected action: "${action}", without emoji: "${actionWithoutEmoji}"`);
+
+        switch (actionWithoutEmoji.trim()) {
             case 'Agent Management':
                 await agentManagementMenu();
                 break;
@@ -369,7 +366,6 @@ async function mainMenu() {
             case 'Exit':
                 console.log(chalk.green('\nThank you for using JuliaOS! Goodbye! 👋'));
                 process.exit(0);
-                break;
         }
     }
 }
@@ -380,16 +376,16 @@ async function mainMenu() {
 function displayHeader() {
     // Clear any previous output
     console.clear();
-    
+
     // Add a subtle random color variation to make the interface feel alive
     const colors = [chalk.cyan, chalk.blue, chalk.blueBright];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
+
     console.log(randomColor(`
      ╔═══════════════════════════════════════════════════════════════╗
      ║                                                               ║
-     ║          ██╗██████╗   ██████╗ ███████╗                        ║ 
-     ║          ██║╚════██╗ ██╔═══██╗██╔════╝                        ║    
+     ║          ██╗██████╗   ██████╗ ███████╗                        ║
+     ║          ██║╚════██╗ ██╔═══██╗██╔════╝                        ║
      ║          ██║ █████╔╝ ██║   ██║███████╗                        ║
      ║       ██ ██║ ╚═══██╗ ██║   ██║╚════██║                        ║
      ║         ████║██████╔╝╚██████╔╝███████║                        ║
@@ -438,7 +434,7 @@ async function checkNetworks() {
     try {
         const networks = ['ethereum', 'polygon', 'bsc', 'arbitrum', 'optimism', 'base'];
         const results = await Promise.all(
-            networks.map(async (network) => {
+            networks.map(async (_) => {
                 try {
                     // Simulate network check
                     await new Promise(resolve => setTimeout(resolve, 100));
@@ -458,7 +454,7 @@ async function checkApis() {
     try {
         const apis = ['openai', 'anthropic', 'google', 'aws'];
         const results = await Promise.all(
-            apis.map(async (api) => {
+            apis.map(async (_) => {
                 try {
                     // Simulate API check
                     await new Promise(resolve => setTimeout(resolve, 100));
@@ -498,14 +494,14 @@ async function checkStorage() {
 async function runAllSystemChecks() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     // Create a more visually interesting spinner
     const spinner = ora({
         text: 'Running system checks...',
         spinner: 'dots',
         color: 'cyan'
     }).start();
-    
+
     try {
         // Simulate the checks running with a slight delay for each check to see the spinner
         const juliaPromise = checkJulia().then(result => {
@@ -513,37 +509,37 @@ async function runAllSystemChecks() {
             return result;
         });
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         const walletPromise = checkWallet().then(result => {
             spinner.text = 'Checking wallet connection...';
             return result;
         });
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         const networkPromise = checkNetworks().then(result => {
             spinner.text = 'Checking network connectivity...';
             return result;
         });
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         const apiPromise = checkApis().then(result => {
             spinner.text = 'Verifying API keys...';
             return result;
         });
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         const storagePromise = checkStorage().then(result => {
             spinner.text = 'Checking storage system...';
             return result;
         });
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         // Wait for all promises to resolve
-        const [juliaStatus, walletStatus, networkStatus, apiStatus, storageStatus] = 
+        const [juliaStatus, walletStatus, networkStatus, apiStatus, storageStatus] =
             await Promise.all([juliaPromise, walletPromise, networkPromise, apiPromise, storagePromise]);
 
         spinner.succeed('System checks complete ✨');
-        
+
         // Display results in a fancy box
         console.log(chalk.cyan('\n┌─ System Status ─────────────────────────────────────────┐'));
         console.log(chalk.cyan('│                                                          │'));
@@ -559,7 +555,7 @@ async function runAllSystemChecks() {
         spinner.fail('System checks failed ❌');
         console.error(chalk.red('Error running system checks:'), error.message);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([
         {
@@ -576,24 +572,18 @@ async function runAllSystemChecks() {
 async function agentManagementMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
-    // Display an improved agent animation with better alignment
+
+    // Display a professional header for agent management
     console.log(chalk.blue(`
       ╔══════════════════════════════════════════╗
       ║           Agent Management               ║
       ║                                          ║
-      ║           ╔═══════════╗                  ║
-      ║           ║   ╭───╮   ║                  ║
-      ║           ║   │o o│   ║  AI Agent        ║
-      ║           ║   │ ▿ │   ║  Ready for       ║
-      ║           ║   ╰───╯   ║  your commands!  ║
-      ║           ╚═══╦═══╦═══╝                  ║
-      ║               ║   ║                      ║
-      ║             ╔═╝   ╚═╗                    ║
-      ║             ╚═══════╝                    ║
+      ║  👤 Create, configure and manage AI      ║
+      ║     agents for various tasks.            ║
+      ║                                          ║
       ╚══════════════════════════════════════════╝
     `));
-    
+
     const { action } = await inquirer.prompt([
         {
             type: 'list',
@@ -620,7 +610,7 @@ async function agentManagementMenu() {
             spinner: 'dots',
             color: 'blue'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
         spinner.stop();
     }
@@ -654,20 +644,14 @@ async function swarmManagementMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
 
-    // Display an improved swarm animation with better alignment
+    // Display a professional header for swarm management
     console.log(chalk.green(`
       ╔══════════════════════════════════════════╗
       ║           Swarm Management               ║
       ║                                          ║
-      ║      ╭─●─╮       ●         ╭─●─╮        ║
-      ║      │   │      ╱ ╲        │   │        ║
-      ║      ○   ○     ○   ●       ○   ○        ║
-      ║     ╱     ╲   ╱     ╲     ╱     ╲       ║
-      ║    ●       ○ ○       ●   ●       ○      ║
-      ║     ╲     ╱   ╲     ╱     ╲     ╱       ║
-      ║      ○   ●     ●   ○       ○   ●        ║
-      ║      │   │      ╲ ╱        │   │        ║
-      ║      ╰─○─╯       ○         ╰─○─╯        ║
+      ║  🐝 Coordinate multiple agents working    ║
+      ║     together to solve complex tasks.      ║
+      ║                                          ║
       ╚══════════════════════════════════════════╝
     `));
 
@@ -677,20 +661,18 @@ async function swarmManagementMenu() {
             name: 'action',
             message: '🐝 Select swarm action:',
             choices: [
-                'Create Swarm', // Includes Julia Native & OpenAI
+                'Create Swarm',
                 'List Swarms',
-                'Configure Swarm', // Primarily for Julia Native Swarms for now
-                'Start Swarm',     // Primarily for Julia Native Swarms for now
-                'Stop Swarm',      // Primarily for Julia Native Swarms for now
-                new inquirer.Separator('--- OpenAI Swarm Actions ---'),
-                'Run OpenAI Task',
-                'Get OpenAI Response',
-                new inquirer.Separator(),
-                'View Metrics',    // Primarily for Julia Native Swarms for now
+                'Configure Swarm',
+                'Start Swarm',
+                'Stop Swarm',
+                'View Metrics',
                 'Delete Swarm',
+                'Run OpenAI Task',     // New Option
+                'Get OpenAI Response', // New Option
                 'Back'
             ],
-            pageSize: 15 // Increased page size
+            pageSize: 10 // Increased size to accommodate new options
         }
     ]);
 
@@ -722,17 +704,17 @@ async function swarmManagementMenu() {
         case 'Stop Swarm':
             await stopSwarm();
             break;
-        case 'Run OpenAI Task': // New Action
-            await runOpenAITask();
-            break;
-        case 'Get OpenAI Response': // New Action
-            await getOpenAIResponse();
-            break;
         case 'View Metrics':
             await displaySwarmMetrics();
             break;
         case 'Delete Swarm':
             await deleteSwarm();
+            break;
+        case 'Run OpenAI Task': // New Case
+            await runOpenAITask();
+            break;
+        case 'Get OpenAI Response': // New Case
+            await getOpenAIResponse();
             break;
     }
 }
@@ -749,7 +731,7 @@ async function crossChainHubMenu() {
 
     const state = walletManager.getState();
     const walletStatus = state.isConnected
-        ? `${state.address} (${state.provider || 'Unknown'} on ${state.chain}) [${state.readOnly ? 'Read-only' : 'Full Access'}]`
+        ? `${state.address} (${state.provider || 'Unknown'} on ${state.chainId}) [${state.readOnly ? 'Read-only' : 'Full Access'}]`
         : 'Not connected';
 
     console.log(chalk.cyan('\n💼 Wallet Status:'), walletStatus);
@@ -771,8 +753,14 @@ async function crossChainHubMenu() {
             type: 'list',
             name: 'action',
             message: '⛓️ Select cross-chain/trade action:', // Updated message
-            choices,
-            pageSize: 10
+            choices: [
+                ...choices.slice(0, -1), // All choices except 'Back'
+                'Bridge Tokens (Wormhole)', // Add Wormhole bridge option
+                'Check Bridge Status (Wormhole)', // Add Wormhole bridge status option
+                'View Wrapped Tokens (Wormhole)', // Add Wormhole wrapped tokens option
+                'Back'
+            ],
+            pageSize: 12 // Increased page size to accommodate new options
         }
     ]);
 
@@ -803,11 +791,11 @@ async function crossChainHubMenu() {
                     const balanceResult = await juliaBridge.runJuliaCommand('Bridge.get_wallet_balance', [
                         state.address,
                         null, // Pass null for native balance, or specific token address
-                        state.chain
+                        state.chainId
                     ]);
                     if (balanceResult.success) {
                         spinner.succeed('Balance retrieved successfully!');
-                        console.log(chalk.green(`Native Balance (${state.chain}): ${balanceResult.data.balance}`));
+                        console.log(chalk.green(`Native Balance (${state.chainId}): ${balanceResult.data.balance}`));
                         // TODO: Add prompt to fetch specific token balance
                     } else {
                         spinner.fail(`Failed to get balance: ${balanceResult.error}`);
@@ -832,32 +820,33 @@ async function crossChainHubMenu() {
         case 'Check Transaction Status':
             await checkTransactionStatus();
             break;
+        case 'Bridge Tokens (Wormhole)':
+            await bridgeTokensWormhole();
+            break;
+        case 'Check Bridge Status (Wormhole)':
+            await checkBridgeStatusWormhole();
+            break;
+        case 'View Wrapped Tokens (Wormhole)':
+            await viewWrappedTokensWormhole();
+            break;
     }
 }
 
 async function apiKeysManagementMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
-    // Display an improved API keys animation with better alignment
+
+    // Display a professional header for API keys management
     console.log(chalk.yellow(`
       ╔══════════════════════════════════════════╗
       ║         API Keys Management              ║
       ║                                          ║
-      ║       ┌─────────────────────┐            ║
-      ║       │                     │            ║
-      ║       │   ┌───┐ ┌───┐ ┌───┐ │            ║
-      ║       │   │ A │ │ P │ │ I │ │            ║
-      ║       │   └───┘ └───┘ └───┘ │            ║
-      ║       │                     │            ║
-      ║       └─────────┬───────────┘            ║
-      ║                 │                        ║
-      ║           ┌─────┴─────┐                  ║
-      ║           │ ********* │                  ║
-      ║           └───────────┘                  ║
+      ║  🔑 Manage API keys for external services  ║
+      ║     and integrations.                     ║
+      ║                                          ║
       ╚══════════════════════════════════════════╝
     `));
-  
+
     const { action } = await inquirer.prompt([
         {
             type: 'list',
@@ -881,11 +870,11 @@ async function apiKeysManagementMenu() {
             spinner: 'dots',
             color: 'yellow'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
         spinner.stop();
     }
-  
+
     switch (action) {
         case 'Add API Key':
             await addApiKey();
@@ -905,25 +894,18 @@ async function apiKeysManagementMenu() {
 async function systemConfigurationMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
-    // Display an improved system configuration animation with better alignment
+
+    // Display a professional header for system configuration
     console.log(chalk.blueBright(`
       ╔══════════════════════════════════════════╗
       ║        System Configuration              ║
       ║                                          ║
-      ║          ┌─────────────────┐             ║
-      ║          │  ⚙️  Settings   │             ║
-      ║          └────────┬────────┘             ║
-      ║                   │                      ║
-      ║         ┌─────────┼─────────┐            ║
-      ║         │         │         │            ║
-      ║      ┌──┴──┐   ┌──┴──┐   ┌──┴──┐         ║
-      ║      │ Perf │   │ Sec │   │ Net │         ║
-      ║      └─────┘   └─────┘   └─────┘         ║
+      ║  ⚙️ Configure system settings and         ║
+      ║     preferences for optimal performance.   ║
       ║                                          ║
       ╚══════════════════════════════════════════╝
     `));
-    
+
     const { action } = await inquirer.prompt([
         {
             type: 'list',
@@ -939,7 +921,7 @@ async function systemConfigurationMenu() {
             pageSize: 10
         }
     ]);
-    
+
     // Show a loading animation when an action is selected
     if (action !== 'Back') {
         const spinner = ora({
@@ -947,11 +929,11 @@ async function systemConfigurationMenu() {
             spinner: 'dots',
             color: 'blue'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
         spinner.stop();
     }
-    
+
     switch (action) {
         case 'Configure Performance':
             await configurePerformance();
@@ -971,8 +953,8 @@ async function systemConfigurationMenu() {
 async function performanceMetricsMenu() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
-    // Display an improved metrics animation with better alignment
+
+    // Display a professional header for performance metrics
     console.log(chalk.redBright(`
       ╔══════════════════════════════════════════╗
       ║        Performance Metrics               ║
@@ -987,7 +969,7 @@ async function performanceMetricsMenu() {
       ║                                          ║
       ╚══════════════════════════════════════════╝
     `));
-  
+
     const { action } = await inquirer.prompt([
         {
             type: 'list',
@@ -1003,7 +985,7 @@ async function performanceMetricsMenu() {
             pageSize: 10
         }
     ]);
-    
+
     // Show a loading animation when an action is selected
     if (action !== 'Back') {
         const spinner = ora({
@@ -1011,11 +993,11 @@ async function performanceMetricsMenu() {
             spinner: 'dots',
             color: 'red'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
         spinner.stop();
     }
-  
+
     switch (action) {
         case 'View System Metrics':
             await displaySystemMetrics();
@@ -1036,6 +1018,7 @@ async function performanceMetricsMenu() {
 // Agent Functions
 // =============================================================================
 async function createAgent() {
+    // Use a different variable name to avoid confusion
     const { name, type, config } = await inquirer.prompt([
         {
             type: 'input',
@@ -1047,7 +1030,15 @@ async function createAgent() {
             type: 'list',
             name: 'type',
             message: 'Select agent type:',
-            choices: ['Trading', 'Analysis', 'Execution', 'Monitoring']
+            choices: [
+                'Trading',
+                'Analysis',
+                'Execution',
+                'Monitoring',
+                'Cross Chain Optimizer',
+                'Portfolio Optimization',
+                'Smart Grid Management'
+            ]
         },
         {
             type: 'input',
@@ -1073,10 +1064,28 @@ async function createAgent() {
             spinner.warn('Invalid JSON configuration format. Using empty config.');
             agentConfig = {};
         }
-        
+
+        // Convert display type to backend type
+        let agentType;
+        console.log(`Selected agent type: ${type}`);
+        switch(type) {
+            case 'Cross Chain Optimizer':
+                agentType = 'cross_chain_optimizer';
+                break;
+            case 'Portfolio Optimization':
+                agentType = 'portfolio_optimization';
+                break;
+            case 'Smart Grid Management':
+                agentType = 'smart_grid';
+                break;
+            default:
+                agentType = type.toLowerCase();
+        }
+        console.log(`Converted to backend type: ${agentType}`);
+
         // Try to create agent using the Julia backend first
         let useBackend = true;
-        
+
         try {
             spinner.text = 'Connecting to Julia backend...';
             // First check if the backend is responsive
@@ -1084,43 +1093,44 @@ async function createAgent() {
             if (!healthResult || healthResult.status !== 'healthy') {
                 throw new Error('Backend health check failed');
             }
-            
+
             spinner.text = 'Sending request to Julia backend...';
-            const backendResult = await juliaBridge.runJuliaCommand('create_agent', [name, type, JSON.stringify(agentConfig)]);
-            
+            console.log(`Sending agent creation request with type: ${agentType}`);
+            const backendResult = await juliaBridge.runJuliaCommand('create_agent', [name, agentType, JSON.stringify(agentConfig)]);
+
             if (backendResult && backendResult.error) {
                 throw new Error(backendResult.error);
             }
-            
+
             // Successfully created via backend
             spinner.succeed('Agent created successfully via Julia backend!');
-            
+
             console.log(chalk.green(`\nAgent "${name}" created successfully!`));
             console.log(chalk.cyan('Agent ID:'), backendResult.id || 'Unknown');
             console.log(chalk.cyan('Status:'), backendResult.status || 'Initialized');
-            
+
             // Debug information
             console.log(chalk.gray('\nDebug: Response from backend:'), JSON.stringify(backendResult));
-            
+
         } catch (backendError) {
             // Backend failed, fall back to local mock implementation
             useBackend = false;
             spinner.warn(`Julia backend request failed: ${backendError.message}`);
             console.log(chalk.yellow('Falling back to local agent creation...'));
-            
+
             // Short delay for UI
             await new Promise(resolve => setTimeout(resolve, 500));
         }
-        
+
         // Only proceed with local creation if backend failed
         if (!useBackend) {
             // Fallback to local creation
             spinner.text = 'Using local mock implementation...';
-            
-            const result = await createAgentService(name, type, agentConfig);
-            
+
+            const result = await createAgentService(name, agentType, agentConfig);
+
             spinner.succeed('Agent created with local mock implementation');
-            
+
             console.log(chalk.green(`\nAgent "${name}" created successfully!`));
             console.log(chalk.cyan('Agent ID:'), result.id);
             console.log(chalk.cyan('Status:'), result.status);
@@ -1131,7 +1141,7 @@ async function createAgent() {
         spinner.fail('Failed to create agent');
         console.error(chalk.red('\nError:'), error.message);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([
         {
@@ -1150,12 +1160,12 @@ async function listAgents() {
             spinner: 'dots',
             color: 'blue'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 800));
-        
+
         let result;
         let usingMockData = false;
-        
+
         try {
             // Try to get all agents from Julia backend
             result = await juliaBridge.runJuliaCommand('list_agents', []);
@@ -1163,41 +1173,54 @@ async function listAgents() {
             // If backend fails, log the error and use mock data
             spinner.warn(`Backend error: ${backendError.message}. Using mock data.`);
             usingMockData = true;
-            
+
             // Provide mock data for demo purposes
             result = {
                 agents: [
-                    { 
+                    {
                         id: uuidv4().substring(0, 8),
-                        name: 'TradingAssistant', 
-                        type: 'Trading', 
-                        status: 'active' 
+                        name: 'TradingAssistant',
+                        type: 'Trading',
+                        status: 'active'
                     },
-                    { 
+                    {
                         id: uuidv4().substring(0, 8),
-                        name: 'MarketAnalyzer', 
-                        type: 'Analysis', 
-                        status: 'inactive' 
+                        name: 'MarketAnalyzer',
+                        type: 'Analysis',
+                        status: 'inactive'
                     }
                 ]
             };
         }
-        
+
         spinner.stop();
-        
+
         if (result && result.error) {
             throw new Error(result.error);
         }
-        
+
         console.log(chalk.cyan('\n┌─ Agent List ───────────────────────────────────────────┐'));
         console.log(chalk.cyan('│                                                          │'));
-        
-        if (result && result.agents && result.agents.length > 0) {
-            result.agents.forEach(agent => {
-                const status = agent.status === 'active' ? chalk.green('Active') : chalk.yellow('Inactive');
+
+        // Check if we have agents in the result
+        if (result && result.result && result.result.agents && result.result.agents.length > 0) {
+            // Handle the nested structure from the Julia backend
+            result.result.agents.forEach(agent => {
+                const status = agent.status === 'active' ? chalk.green('Active') : chalk.yellow('Initialized');
                 console.log(chalk.cyan(`│  • ${agent.name.padEnd(20)} (${agent.type.padEnd(10)}) [${status}]   │`));
             });
-            
+
+            if (usingMockData) {
+                console.log(chalk.cyan('│                                                          │'));
+                console.log(chalk.cyan('│  ℹ️  Note: Displaying mock data (backend unavailable)    │'));
+            }
+        } else if (result && result.agents && result.agents.length > 0) {
+            // Handle the direct structure (for mock data or older API)
+            result.agents.forEach(agent => {
+                const status = agent.status === 'active' ? chalk.green('Active') : chalk.yellow('Initialized');
+                console.log(chalk.cyan(`│  • ${agent.name.padEnd(20)} (${agent.type.padEnd(10)}) [${status}]   │`));
+            });
+
             if (usingMockData) {
                 console.log(chalk.cyan('│                                                          │'));
                 console.log(chalk.cyan('│  ℹ️  Note: Displaying mock data (backend unavailable)    │'));
@@ -1209,16 +1232,16 @@ async function listAgents() {
             console.log(chalk.cyan('│  Tip: Select "Create Agent" from the Agent Management  │'));
             console.log(chalk.cyan('│       menu to create your first agent.                 │'));
         }
-        
+
         console.log(chalk.cyan('│                                                          │'));
         console.log(chalk.cyan('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Debug information about the response
         console.log(chalk.gray('\nDebug: Response from backend:'), result ? JSON.stringify(result) : 'No response');
     } catch (error) {
         console.error(chalk.red('\nFailed to list agents:'), error.message);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([
         {
@@ -1254,7 +1277,7 @@ async function configureAgent() {
             console.error(chalk.red('Invalid JSON updates format. Using empty updates.'));
             configUpdates = {};
         }
-        
+
         const result = await updateAgentService(agentId, configUpdates);
         console.log(chalk.green(`Agent "${agentId}" configuration updated successfully!`));
         console.log(chalk.cyan('New Status:'), result.status);
@@ -1333,7 +1356,7 @@ async function deleteAgent() {
 async function displayAgentMetrics() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     const { agentId } = await inquirer.prompt([
         {
             type: 'input',
@@ -1349,7 +1372,7 @@ async function displayAgentMetrics() {
         spinner: 'dots',
         color: 'cyan'
     }).start();
-    
+
     await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate loading
 
     try {
@@ -1375,7 +1398,7 @@ async function displayAgentMetrics() {
         console.log(chalk.cyan(`│  ✅ Success Rate:   ${metrics.success.padEnd(46)}│`));
         console.log(chalk.cyan('│                                                          │'));
         console.log(chalk.cyan('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Pause to let the user see the results
         await inquirer.prompt([
             {
@@ -1387,7 +1410,7 @@ async function displayAgentMetrics() {
     } catch (error) {
         spinner.fail('Failed to collect agent metrics');
         console.error(chalk.red('Error:'), error.message);
-        
+
         // Pause to let the user see the error
         await inquirer.prompt([
             {
@@ -1439,7 +1462,7 @@ async function createSwarm() {
         ]);
         const size = parseInt(sizePrompt.size);
 
-        const algoChoices = ['pso', 'gwo', 'woa', 'genetic', 'ga', 'aco', 'de'];
+        const algoChoices = ['DE', 'PSO', 'GWO', 'ACO', 'GA', 'WOA'];
         const algoPrompt = await inquirer.prompt([
             {
                 type: 'list',
@@ -1461,7 +1484,7 @@ async function createSwarm() {
             }
         ]);
         const trading_pairs = pairsPrompt.trading_pairs;
-        
+
         const chainPrompt = await inquirer.prompt([
             {
                 type: 'input',
@@ -1516,7 +1539,7 @@ async function createSwarm() {
                 parameters: parameters
                 // chain and dex are passed separately to the service function
             };
-            
+
             console.log(chalk.cyan('\nConstructed Julia Swarm Config:'), JSON.stringify(swarmConfig, null, 2));
             console.log(chalk.cyan('Target Chain:'), chain);
             console.log(chalk.cyan('Target DEX:'), dex);
@@ -1532,7 +1555,7 @@ async function createSwarm() {
     } else if (implementationType === 'OpenAI Swarm') {
         // --- Logic for OpenAI Swarm ---
         console.log(chalk.blue('\n--- Configure OpenAI Swarm ---'));
-        
+
         const namePrompt = await inquirer.prompt([
             {
                 type: 'input',
@@ -1564,7 +1587,7 @@ async function createSwarm() {
                 default: 'You are a helpful agent.'
             });
             const instructions = instructionsPrompt.instructions;
-            
+
             // TODO: Add prompts for agent functions/tools if needed later
 
             agentConfigs.push({
@@ -1587,9 +1610,9 @@ async function createSwarm() {
 
             // Call the service function for OpenAI Swarm
             const result = await createOpenAISwarmService(name, agentConfigs);
-            
+
             console.log(chalk.magenta('[DEBUG] Call to createOpenAISwarmService finished.'));
-            
+
             console.log(chalk.green(`OpenAI Swarm "${name}" creation request sent!`));
             console.log(chalk.cyan('Backend Response:'), JSON.stringify(result));
 
@@ -1608,12 +1631,12 @@ async function listSwarms() {
             spinner: 'dots',
             color: 'green'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 800));
-        
+
         let result;
         let usingMockData = false;
-        
+
         try {
             // Try to get all swarms from Julia backend
             result = await juliaBridge.runJuliaCommand('list_swarms', []);
@@ -1621,43 +1644,71 @@ async function listSwarms() {
             // If backend fails, log the error and use mock data
             spinner.warn(`Backend error: ${backendError.message}. Using mock data.`);
             usingMockData = true;
-            
+
             // Provide mock data for demo purposes
             result = {
                 swarms: [
-                    { 
+                    {
                         id: uuidv4().substring(0, 8),
-                        name: 'TradingSwarm', 
-                        type: 'PSO', 
+                        name: 'TradingSwarm',
+                        type: 'PSO',
                         agents: 12,
-                        status: 'active' 
+                        status: 'active'
                     },
-                    { 
+                    {
                         id: uuidv4().substring(0, 8),
-                        name: 'AnalyticsCluster', 
-                        type: 'GWO', 
+                        name: 'AnalyticsCluster',
+                        type: 'GWO',
                         agents: 8,
-                        status: 'inactive' 
+                        status: 'inactive'
+                    },
+                    {
+                        id: uuidv4().substring(0, 8),
+                        name: 'PortfolioOptimizer',
+                        type: 'DE',
+                        agents: 15,
+                        status: 'active'
+                    },
+                    {
+                        id: uuidv4().substring(0, 8),
+                        name: 'MarketAnalyzer',
+                        type: 'ACO',
+                        agents: 10,
+                        status: 'active'
+                    },
+                    {
+                        id: uuidv4().substring(0, 8),
+                        name: 'StrategyFinder',
+                        type: 'GA',
+                        agents: 20,
+                        status: 'inactive'
+                    },
+                    {
+                        id: uuidv4().substring(0, 8),
+                        name: 'PricePredictor',
+                        type: 'WOA',
+                        agents: 8,
+                        status: 'active'
                     }
                 ]
             };
         }
-        
+
         spinner.stop();
-        
+
         if (result && result.error) {
             throw new Error(result.error);
         }
-        
+
         console.log(chalk.green('\n┌─ Swarm List ───────────────────────────────────────────┐'));
         console.log(chalk.green('│                                                          │'));
-        
+
         if (result && result.swarms && result.swarms.length > 0) {
             result.swarms.forEach(swarm => {
                 const status = swarm.status === 'active' ? chalk.green('Active') : chalk.yellow('Inactive');
                 console.log(chalk.green(`│  • ${swarm.name.padEnd(20)} (${swarm.type.padEnd(10)}) [${status}]   │`));
             });
-            
+
             if (usingMockData) {
                 console.log(chalk.green('│                                                          │'));
                 console.log(chalk.green('│  ℹ️  Note: Displaying mock data (backend unavailable)    │'));
@@ -1669,16 +1720,16 @@ async function listSwarms() {
             console.log(chalk.green('│  Tip: Select "Create Swarm" from the Swarm Management  │'));
             console.log(chalk.green('│       menu to create your first swarm.                 │'));
         }
-        
+
         console.log(chalk.green('│                                                          │'));
         console.log(chalk.green('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Debug information about the response
         console.log(chalk.gray('\nDebug: Response from backend:'), result ? JSON.stringify(result) : 'No response');
     } catch (error) {
         console.error(chalk.red('\nFailed to list swarms:'), error.message);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([
         {
@@ -1714,7 +1765,7 @@ async function configureSwarm() {
             console.error(chalk.red('Invalid JSON updates format. Using empty updates.'));
             configUpdates = {};
         }
-        
+
         const result = await updateSwarmService(swarmId, configUpdates);
         console.log(chalk.green(`Swarm "${swarmId}" configuration updated successfully!`));
         console.log(chalk.cyan('New Status:'), result.status);
@@ -1793,7 +1844,7 @@ async function deleteSwarm() {
 async function displaySwarmMetrics() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     const { swarmId } = await inquirer.prompt([
         {
             type: 'input',
@@ -1809,7 +1860,7 @@ async function displaySwarmMetrics() {
         spinner: 'dots',
         color: 'green'
     }).start();
-    
+
     await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate loading
 
     try {
@@ -1837,7 +1888,7 @@ async function displaySwarmMetrics() {
         console.log(chalk.green(`│  ✅ Success Rate:   ${metrics.success.padEnd(46)}│`));
         console.log(chalk.green('│                                                          │'));
         console.log(chalk.green('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Pause to let the user see the results
         await inquirer.prompt([
             {
@@ -1849,7 +1900,7 @@ async function displaySwarmMetrics() {
     } catch (error) {
         spinner.fail('Failed to collect swarm metrics');
         console.error(chalk.red('Error:'), error.message);
-        
+
         // Pause to let the user see the error
         await inquirer.prompt([
             {
@@ -1984,7 +2035,7 @@ async function viewTransactionHistory() {
 
     try {
         let transactions = state.transactions || [];
-        
+
         if (transactions.length === 0) {
             // If no transactions, provide mock data for demo purposes
             if (state.readOnly) {
@@ -1993,13 +2044,13 @@ async function viewTransactionHistory() {
                 return;
             } else {
                 transactions = [
-                    { 
-                        hash: `0x${Math.random().toString(16).substring(2, 12)}`, 
+                    {
+                        hash: `0x${Math.random().toString(16).substring(2, 12)}`,
                         from: 'Previous Wallet',
-                        to: state.address, 
-                        amount: `0.5 ${state.chain.toUpperCase()}`, 
+                        to: state.address,
+                        amount: `0.5 ${state.chainId.toUpperCase()}`,
                         timestamp: new Date(Date.now() - 86400000), // 1 day ago
-                        status: 'Confirmed' 
+                        status: 'Confirmed'
                     }
                 ];
             }
@@ -2023,7 +2074,7 @@ async function viewTransactionHistory() {
                 '\n'
             );
         });
-        
+
         await inquirer.prompt([
             {
                 type: 'input',
@@ -2040,7 +2091,7 @@ async function viewTransactionHistory() {
 // API Key Functions
 // =============================================================================
 async function addApiKey() {
-    const { service, key } = await inquirer.prompt([
+    const { service } = await inquirer.prompt([
     {
       type: 'list',
             name: 'service',
@@ -2071,9 +2122,9 @@ async function listApiKeys() {
             spinner: 'dots',
             color: 'yellow'
         }).start();
-        
+
         await new Promise(resolve => setTimeout(resolve, 800));
-        
+
         // Simulate listing API keys (in a real app, this would fetch from a backend)
         const keys = [
             { service: 'OpenAI', status: 'Valid', last_used: '2 hours ago' },
@@ -2081,17 +2132,17 @@ async function listApiKeys() {
             { service: 'Google', status: 'Invalid', last_used: 'Never' },
             { service: 'AWS', status: 'Missing', last_used: 'Never' }
         ];
-        
+
         spinner.succeed('API keys retrieved successfully');
 
         console.log(chalk.yellow('\n┌─ API Keys ─────────────────────────────────────────────┐'));
         console.log(chalk.yellow('│                                                          │'));
-        
+
         if (keys.length > 0) {
             keys.forEach(key => {
                 let statusColor;
                 let statusIcon;
-                
+
                 switch (key.status) {
                     case 'Valid':
                         statusColor = chalk.green;
@@ -2109,7 +2160,7 @@ async function listApiKeys() {
                         statusColor = chalk.white;
                         statusIcon = '❓';
                 }
-                
+
                 console.log(chalk.yellow(`│  • ${key.service.padEnd(12)} ${statusIcon} ${statusColor(key.status.padEnd(10))} Last used: ${key.last_used.padEnd(12)} │`));
             });
         } else {
@@ -2118,13 +2169,13 @@ async function listApiKeys() {
             console.log(chalk.yellow('│  Tip: Select "Add API Key" from the API Keys Management │'));
             console.log(chalk.yellow('│       menu to add your first API key.                   │'));
         }
-        
+
         console.log(chalk.yellow('│                                                          │'));
         console.log(chalk.yellow('└──────────────────────────────────────────────────────────┘'));
     } catch (error) {
         console.error(chalk.red('\nFailed to list API keys:'), error.message);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([
         {
@@ -2136,7 +2187,7 @@ async function listApiKeys() {
 }
 
 async function updateApiKey() {
-    const { service, key } = await inquirer.prompt([
+    const { service } = await inquirer.prompt([
         {
             type: 'list',
             name: 'service',
@@ -2189,7 +2240,7 @@ async function deleteApiKey() {
 // Configuration Functions
 // =============================================================================
 async function configurePerformance() {
-    const { cpu, memory, threads } = await inquirer.prompt([
+    await inquirer.prompt([
           {
             type: 'input',
             name: 'cpu',
@@ -2222,7 +2273,7 @@ async function configurePerformance() {
 }
 
 async function configureSecurity() {
-    const { encryption, authentication, firewall } = await inquirer.prompt([
+    await inquirer.prompt([
         {
             type: 'list',
             name: 'encryption',
@@ -2252,7 +2303,7 @@ async function configureSecurity() {
 }
 
 async function configureNetwork() {
-    const { proxy, dns, timeout } = await inquirer.prompt([
+    await inquirer.prompt([
         {
             type: 'input',
             name: 'proxy',
@@ -2284,7 +2335,7 @@ async function configureNetwork() {
 }
 
 async function configureStorage() {
-    const { path, quota, backup } = await inquirer.prompt([
+    const { path } = await inquirer.prompt([
         {
             type: 'input',
             name: 'path',
@@ -2321,16 +2372,16 @@ async function configureStorage() {
 async function displaySystemMetrics() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     // Show loading spinner
     const spinner = ora({
         text: 'Collecting system metrics...',
         spinner: 'dots',
         color: 'cyan'
     }).start();
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     try {
         // Simulate retrieving system metrics
         const metrics = {
@@ -2352,7 +2403,7 @@ async function displaySystemMetrics() {
         console.log(chalk.cyan(`│  🔄 Processes:      ${metrics.processes.padEnd(46)}│`));
         console.log(chalk.cyan('│                                                          │'));
         console.log(chalk.cyan('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Pause to let the user see the results
         await inquirer.prompt([
             {
@@ -2364,7 +2415,7 @@ async function displaySystemMetrics() {
     } catch (error) {
         spinner.fail('Failed to collect system metrics');
         console.error(chalk.red('Error:'), error.message);
-        
+
         // Pause to let the user see the error
         await inquirer.prompt([
             {
@@ -2379,16 +2430,16 @@ async function displaySystemMetrics() {
 async function displayNetworkMetrics() {
     // displayHeader already includes console.clear()
     displayHeader();
-    
+
     // Show loading spinner
     const spinner = ora({
         text: 'Analyzing network metrics...',
         spinner: 'dots',
         color: 'blue'
     }).start();
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     try {
         // Simulate retrieving network metrics
         const metrics = {
@@ -2400,7 +2451,7 @@ async function displayNetworkMetrics() {
         };
 
         spinner.succeed('Network analysis complete! 🌐');
-        
+
         console.log(chalk.blue('\n┌─ Network Metrics ───────────────────────────────────────┐'));
         console.log(chalk.blue('│                                                          │'));
         console.log(chalk.blue(`│  🔌 Bandwidth:      ${metrics.bandwidth.padEnd(46)}│`));
@@ -2410,7 +2461,7 @@ async function displayNetworkMetrics() {
         console.log(chalk.blue(`│  🔄 Connections:    ${metrics.connections.padEnd(46)}│`));
         console.log(chalk.blue('│                                                          │'));
         console.log(chalk.blue('└──────────────────────────────────────────────────────────┘'));
-        
+
         // Pause to let the user see the results
         await inquirer.prompt([
             {
@@ -2422,7 +2473,7 @@ async function displayNetworkMetrics() {
     } catch (error) {
         spinner.fail('Failed to collect network metrics');
         console.error(chalk.red('Error:'), error.message);
-        
+
         // Pause to let the user see the error
         await inquirer.prompt([
             {
@@ -2440,14 +2491,14 @@ async function displayNetworkMetrics() {
 async function createAgentService(name, type, config) {
     // In a real implementation, we'd communicate with the Julia backend
     // through the juliaBridge to create an agent
-    
+
     try {
         // For demo, generate a unique ID using UUID
         const id = uuidv4();
-        
+
         // Get agent capabilities based on type
         const capabilities = getAgentCapabilities(type);
-        
+
         // Create a more realistic agent object
         const agent = {
             id,
@@ -2465,9 +2516,9 @@ async function createAgentService(name, type, config) {
                 success: '0%'
             }
         };
-        
+
         // In a real app, we'd persist this agent somewhere
-        
+
         return agent;
     } catch (error) {
         console.error('Error in createAgentService:', error);
@@ -2479,7 +2530,7 @@ async function updateAgentService(agentId, updates) {
     try {
         // Call Julia backend to update agent
         const result = await juliaBridge.runJuliaCommand('update_agent', [agentId, JSON.stringify(updates)]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2494,7 +2545,7 @@ async function getAgentStateService(agentId) {
     try {
         // Call Julia backend to get agent state
         const result = await juliaBridge.runJuliaCommand('get_agent_state', [agentId]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2505,11 +2556,12 @@ async function getAgentStateService(agentId) {
     }
 }
 
+// Function for future use
 async function registerAgentSkillService(agentId, skill) {
     try {
         // Call Julia backend to register skill
         const result = await juliaBridge.runJuliaCommand('register_skill', [agentId, JSON.stringify(skill)]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2524,20 +2576,27 @@ async function registerAgentSkillService(agentId, skill) {
 // Swarm Service Functions
 // =============================================================================
 async function createSwarmService(name, type, config, chain, dex) {
+    // Note: This function handles Julia Native Swarms.
+    // createOpenAISwarmService handles OpenAI Swarms.
     try {
-        // Construct the parameters expected by the Julia backend
-        const swarmConfig = {
-            name: name,
-            size: config.size || 10, // Default size if not provided
-            algorithm: config.algorithm || 'pso', // Default algorithm
-            trading_pairs: config.trading_pairs || ['ETH/USD'], // Default pair
-            parameters: config.parameters || {} // Algorithm parameters
+        // Construct the single config object expected by the Julia backend
+        // Combine the explicitly passed chain/dex with the rest of the config
+        const combinedConfig = {
+            ...config, // Spread existing config (size, algorithm, trading_pairs, parameters)
+            name: name, // Ensure name is included
+            type: type, // Ensure type is included
+            chain: chain, // Add chain
+            dex: dex    // Add dex
         };
 
+        // console.log("[createSwarmService] Combined Config Payload:", JSON.stringify(combinedConfig, null, 2)); // Use console.log for JS debugging if needed
+
         // Call the Julia backend function via the bridge
+        // FIX: Use the correct command "create_swarm"
+        // FIX: Pass the single combined config object as the only parameter in the array
         const result = await juliaBridge.runJuliaCommand(
-            'SwarmManager.create_swarm', 
-            [swarmConfig, chain, dex] // Pass parameters as an array
+            'create_swarm',
+            [combinedConfig] // Pass the single config object in an array
         );
 
         if (result && result.error) {
@@ -2545,14 +2604,11 @@ async function createSwarmService(name, type, config, chain, dex) {
         }
 
         // Return the successful result from the backend
-        // The actual structure might differ based on what SwarmManager.create_swarm returns
-        return result || { id: 'unknown', status: 'created_backend' }; 
+        return result || { id: 'unknown', status: 'created_backend' };
 
     } catch (error) {
-        // Log the error for debugging
-        console.error(chalk.red(`Error in createSwarmService: ${error.message}`), error);
-        // Re-throw the error to be caught by the calling function
-        throw new Error(`Failed to create swarm via backend: ${error.message}`);
+        console.error(chalk.red(`Error in createSwarmService (Native): ${error.message}`), error);
+        throw new Error(`Failed to create native swarm via backend: ${error.message}`);
     }
 }
 
@@ -2603,7 +2659,7 @@ async function updateSwarmService(swarmId, updates) {
     try {
         // Call Julia backend to update swarm
         const result = await juliaBridge.runJuliaCommand('update_swarm', [swarmId, JSON.stringify(updates)]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2618,7 +2674,7 @@ async function getSwarmStateService(swarmId) {
     try {
         // Call Julia backend to get swarm state
         const result = await juliaBridge.runJuliaCommand('get_swarm_state', [swarmId]);
-        
+
         if (result.error) {
             throw new Error(result.error);
         }
@@ -2629,6 +2685,7 @@ async function getSwarmStateService(swarmId) {
     }
 }
 
+// Function for future use
 async function broadcastSwarmMessageService(swarmId, message) {
     try {
         // Call Julia backend to broadcast message
@@ -2654,20 +2711,14 @@ async function runOpenAITask() {
         const answers = await inquirer.prompt([
             {
                 type: 'input',
-                name: 'swarm_id',
-                message: 'Enter the OpenAI Swarm ID:',
-                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
-            },
-            {
-                type: 'input',
-                name: 'agent_name',
-                message: 'Enter the Agent Name within the swarm:',
-                validate: input => input.trim().length > 0 ? true : 'Agent Name cannot be empty.'
+                name: 'assistant_id', // Explicitly ask for Assistant ID
+                message: 'Enter the OpenAI Assistant ID (used as Swarm ID):',
+                validate: input => input.trim().length > 0 ? true : 'Assistant ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'task_prompt',
-                message: 'Enter the task prompt for the agent:',
+                message: 'Enter the task prompt for the swarm:',
                 validate: input => input.trim().length > 0 ? true : 'Task prompt cannot be empty.'
             },
             {
@@ -2677,18 +2728,21 @@ async function runOpenAITask() {
             }
         ]);
 
-        const { swarm_id, agent_name, task_prompt } = answers;
+        const { assistant_id, task_prompt } = answers;
         const thread_id = answers.thread_id.trim() || null; // Send null if blank
 
         const spinner = ora('Submitting task to OpenAI swarm via backend...').start();
 
-        // Construct params array
-        const params = [swarm_id, agent_name, task_prompt];
+        // Construct params array for the backend command
+        // Backend expects: assistant_id, task_prompt, [thread_id - optional]
+        // We send the assistant_id as the first parameter (which the backend expects as swarm_id)
+        const params = [assistant_id, task_prompt];
         if (thread_id) {
             params.push(thread_id);
         }
 
         try {
+            // Call the real backend command
             const response = await juliaBridge.runJuliaCommand('run_openai_task', params);
             spinner.stop();
 
@@ -2697,14 +2751,15 @@ async function runOpenAITask() {
             } else if (response && response.result && response.result.success) {
                 spinner.succeed('Task submitted successfully!');
                 console.log(chalk.green('\nTask Submission Details:'));
-                console.log(chalk.cyan(`  Swarm ID:    ${response.result.swarm_id}`));
-                console.log(chalk.cyan(`  Agent Name:  ${response.result.agent_name}`));
-                console.log(chalk.cyan(`  Thread ID:   ${response.result.thread_id}`));
-                console.log(chalk.cyan(`  Run ID:      ${response.result.run_id}`));
-                console.log(chalk.cyan(`  Run Status:  ${response.result.status}`));
+                // Display the IDs returned from the backend
+                console.log(chalk.cyan(`  Assistant ID: ${response.result.swarm_id || assistant_id}`)); // Show the ID used
+                console.log(chalk.cyan(`  Thread ID:    ${response.result.thread_id}`));
+                console.log(chalk.cyan(`  Run ID:       ${response.result.run_id}`));
+                console.log(chalk.cyan(`  Run Status:   ${response.result.status}`));
                 console.log(chalk.yellow('\nUse "Get OpenAI Response" with the Thread ID and Run ID to check status and get results.'));
             } else {
-                console.error(chalk.red('\nFailed to submit task. Unexpected response format:'));
+                spinner.fail('Failed to submit task.');
+                console.error(chalk.red('\nUnexpected response format from backend:'));
                 console.log(response);
             }
         } catch (bridgeError) {
@@ -2713,6 +2768,8 @@ async function runOpenAITask() {
         }
 
     } catch (error) {
+        // Ensure spinner stops on prompt error
+        if (ora.promise.active) ora.promise.active.stop();
         console.error(chalk.red('An error occurred while setting up the OpenAI task:'), error.message);
     }
 
@@ -2726,29 +2783,31 @@ async function getOpenAIResponse() {
         const answers = await inquirer.prompt([
             {
                 type: 'input',
-                name: 'swarm_id',
-                message: 'Enter the OpenAI Swarm ID:',
-                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+                name: 'assistant_id',
+                message: 'Enter the OpenAI Assistant ID (used as Swarm ID):',
+                validate: input => input.trim().length > 0 ? true : 'Assistant ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'thread_id',
-                message: 'Enter the Thread ID:',
+                message: 'Enter the Thread ID from the task submission:',
                 validate: input => input.trim().length > 0 ? true : 'Thread ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'run_id',
-                message: 'Enter the Run ID:',
+                message: 'Enter the Run ID from the task submission:',
                 validate: input => input.trim().length > 0 ? true : 'Run ID cannot be empty.'
             }
         ]);
 
-        const { swarm_id, thread_id, run_id } = answers;
+        const { assistant_id, thread_id, run_id } = answers;
         const spinner = ora('Fetching response/status from backend...').start();
 
         try {
-            const response = await juliaBridge.runJuliaCommand('get_openai_response', [swarm_id, thread_id, run_id]);
+            // Call the real backend command
+            // Backend expects: assistant_id, thread_id, run_id
+            const response = await juliaBridge.runJuliaCommand('get_openai_response', [assistant_id, thread_id, run_id]);
             spinner.stop();
 
             if (response && response.error) {
@@ -2758,15 +2817,24 @@ async function getOpenAIResponse() {
                 if (result.success) {
                     spinner.succeed(`Status fetched: ${result.status}`);
                     console.log(chalk.green('\nRun Details:'));
-                    console.log(chalk.cyan(`  Swarm ID:    ${result.swarm_id || swarm_id}`));
-                    console.log(chalk.cyan(`  Thread ID:   ${result.thread_id || thread_id}`));
-                    console.log(chalk.cyan(`  Run ID:      ${result.run_id || run_id}`));
-                    console.log(chalk.cyan(`  Status:      ${result.status}`));
+                    console.log(chalk.cyan(`  Assistant ID: ${result.swarm_id || assistant_id}`));
+                    console.log(chalk.cyan(`  Thread ID:    ${result.thread_id || thread_id}`));
+                    console.log(chalk.cyan(`  Run ID:       ${result.run_id || run_id}`));
+                    console.log(chalk.cyan(`  Status:       ${result.status}`));
 
                     if (result.status === 'completed' && result.response) {
                         console.log(chalk.cyan(`\nAssistant Response:`));
-                        console.log(chalk.white(`  ${result.response.content || '(No content found)'}`));
-                        console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                        // Handle potential variations in response structure
+                        if (typeof result.response === 'string') {
+                           console.log(chalk.white(`  ${result.response}`));
+                        } else if (result.response.content) {
+                           console.log(chalk.white(`  ${result.response.content}`));
+                           if (result.response.message_id) {
+                               console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                           }
+                        } else {
+                           console.log(chalk.yellow(`  (Response content format unclear: ${JSON.stringify(result.response)})`));
+                        }
                     } else if (result.message) {
                          console.log(chalk.yellow(`\nMessage: ${result.message}`));
                     }
@@ -2780,7 +2848,8 @@ async function getOpenAIResponse() {
                      }
                 }
             } else {
-                console.error(chalk.red('\nFailed to get response. Unexpected response format:'));
+                spinner.fail('Failed to get response.');
+                console.error(chalk.red('\nUnexpected response format from backend:'));
                 console.log(response);
             }
         } catch (bridgeError) {
@@ -2789,22 +2858,13 @@ async function getOpenAIResponse() {
         }
 
     } catch (error) {
+        // Ensure spinner stops on prompt error
+        if (ora.promise.active) ora.promise.active.stop();
         console.error(chalk.red('An error occurred while setting up the OpenAI response request:'), error.message);
     }
 
     // Pause
     await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
-}
-
-// Helper function to get agent capabilities based on type
-function getAgentCapabilities(type) {
-    const capabilities = {
-        'Trading': ['market_analysis', 'order_execution', 'risk_management'],
-        'Analysis': ['data_processing', 'pattern_recognition', 'prediction'],
-        'Execution': ['order_routing', 'position_management', 'risk_control'],
-        'Monitoring': ['system_monitoring', 'alert_management', 'performance_tracking']
-    };
-    return capabilities[type] || [];
 }
 
 // =============================================================================
@@ -2876,7 +2936,7 @@ async function initializeSystem() {
 // =============================================================================
 async function displayWelcomeAnimation() {
     console.clear();
-    
+
     // Animation frames for the logo
     const frames = [
         `
@@ -2984,7 +3044,7 @@ async function displayWelcomeAnimation() {
      ║                                                               ║
      ╚═══════════════════════════════════════════════════════════════╝`
     ];
-    
+
     // Color sequence for a rainbow effect
     const colors = [
         chalk.red,
@@ -2995,7 +3055,7 @@ async function displayWelcomeAnimation() {
         chalk.cyan,
         chalk.white
     ];
-    
+
     // Display the frames with progressively changing colors
     for (let i = 0; i < frames.length; i++) {
         console.clear();
@@ -3003,26 +3063,26 @@ async function displayWelcomeAnimation() {
         console.log(color(frames[i]));
         await new Promise(resolve => setTimeout(resolve, 200)); // Frame display time
     }
-    
+
     // Add a loading bar animation
     const loadingSteps = 20;
     const loadingChar = '■';
-    
+
     console.log('\n  Initializing JuliaOS components...\n');
     process.stdout.write('  [');
-    
+
     for (let i = 0; i < loadingSteps; i++) {
         process.stdout.write(chalk.cyan(loadingChar));
         await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     process.stdout.write('] Done!\n\n');
     console.log(chalk.green('  ✓ System core initialized'));
     console.log(chalk.green('  ✓ Runtime environment loaded'));
     console.log(chalk.green('  ✓ Network connections established'));
     console.log(chalk.green('  ✓ Security protocols activated'));
     console.log(chalk.green('  ✓ User interface ready'));
-    
+
     // Short pause before continuing to the main interface
     await new Promise(resolve => setTimeout(resolve, 1000));
 }
@@ -3249,7 +3309,7 @@ async function main() {
      }
 }
 
-main(); 
+main();
 
 /**
  * Checks the status of a blockchain transaction.
@@ -3273,22 +3333,22 @@ async function checkTransactionStatus() {
         ]);
 
         const spinner = ora('Checking transaction status...').start();
-        
+
         try {
             const result = await juliaBridge.runJuliaCommand('Bridge.get_transaction_status', { chain: chain.toLowerCase(), tx_hash: txHash });
-            
+
             spinner.stop();
-            
+
             if (result.status === 'error') {
                 console.log(chalk.red(`Error checking transaction: ${result.message}`));
                 return;
             }
-            
+
             // Display transaction status with nice formatting
             const txStatus = result.status;
             let statusColor;
             let statusIcon;
-            
+
             switch (txStatus) {
                 case 'confirmed':
                     statusColor = chalk.green;
@@ -3306,43 +3366,43 @@ async function checkTransactionStatus() {
                     statusColor = chalk.gray;
                     statusIcon = '❓';
             }
-            
+
             console.log(chalk.bold('\nTransaction Status:'));
             console.log(`${statusIcon} Status: ${statusColor(txStatus.toUpperCase())}`);
             console.log(`${chalk.cyan('Transaction Hash:')} ${txHash}`);
             console.log(`${chalk.cyan('Network:')} ${chain}`);
-            
+
             if (result.block_number) {
                 console.log(`${chalk.cyan('Block Number:')} ${result.block_number}`);
             }
-            
+
             if (result.confirmations) {
                 console.log(`${chalk.cyan('Confirmations:')} ${result.confirmations}`);
             }
-            
+
             // Additional receipt info if available
             if (txStatus === 'confirmed' || txStatus === 'failed') {
                 const receipt = result.receipt;
-                
+
                 if (receipt && receipt.gasUsed) {
                     const gasUsed = typeof receipt.gasUsed === 'string' && receipt.gasUsed.startsWith('0x')
                         ? parseInt(receipt.gasUsed.substring(2), 16)
                         : receipt.gasUsed;
                     console.log(`${chalk.cyan('Gas Used:')} ${gasUsed}`);
                 }
-                
+
                 if (receipt && receipt.effectiveGasPrice) {
                     const gasPrice = typeof receipt.effectiveGasPrice === 'string' && receipt.effectiveGasPrice.startsWith('0x')
                         ? parseInt(receipt.effectiveGasPrice.substring(2), 16) / 1e9
                         : receipt.effectiveGasPrice / 1e9;
                     console.log(`${chalk.cyan('Gas Price:')} ${gasPrice.toFixed(2)} Gwei`);
                 }
-                
+
                 if (txStatus === 'failed' && receipt && receipt.revertReason) {
                     console.log(`${chalk.red('Revert Reason:')} ${receipt.revertReason}`);
                 }
             }
-            
+
             // Offer to check again if pending
             if (txStatus === 'pending') {
                 const { checkAgain } = await inquirer.prompt([{
@@ -3351,13 +3411,13 @@ async function checkTransactionStatus() {
                     message: 'Transaction is still pending. Check status again?',
                     default: true
                 }]);
-                
+
                 if (checkAgain) {
                     await checkTransactionStatus(); // Recursively call to check again
-                    return; 
+                    return;
                 }
             }
-            
+
         } catch (error) {
             spinner.fail('Failed to check transaction status');
             console.error(chalk.red('Error:'), error);
@@ -3365,7 +3425,7 @@ async function checkTransactionStatus() {
     } catch (error) {
         console.error(chalk.red('Error:'), error);
     }
-    
+
     // Pause to let the user see the results
     await inquirer.prompt([{
         type: 'input',
@@ -3384,20 +3444,14 @@ async function runOpenAITask() {
         const answers = await inquirer.prompt([
             {
                 type: 'input',
-                name: 'swarm_id',
-                message: 'Enter the OpenAI Swarm ID:',
-                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
-            },
-            {
-                type: 'input',
-                name: 'agent_name',
-                message: 'Enter the Agent Name within the swarm:',
-                validate: input => input.trim().length > 0 ? true : 'Agent Name cannot be empty.'
+                name: 'assistant_id', // Explicitly ask for Assistant ID
+                message: 'Enter the OpenAI Assistant ID (used as Swarm ID):',
+                validate: input => input.trim().length > 0 ? true : 'Assistant ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'task_prompt',
-                message: 'Enter the task prompt for the agent:',
+                message: 'Enter the task prompt for the swarm:',
                 validate: input => input.trim().length > 0 ? true : 'Task prompt cannot be empty.'
             },
             {
@@ -3407,18 +3461,21 @@ async function runOpenAITask() {
             }
         ]);
 
-        const { swarm_id, agent_name, task_prompt } = answers;
+        const { assistant_id, task_prompt } = answers;
         const thread_id = answers.thread_id.trim() || null; // Send null if blank
 
         const spinner = ora('Submitting task to OpenAI swarm via backend...').start();
 
-        // Construct params array
-        const params = [swarm_id, agent_name, task_prompt];
+        // Construct params array for the backend command
+        // Backend expects: assistant_id, task_prompt, [thread_id - optional]
+        // We send the assistant_id as the first parameter (which the backend expects as swarm_id)
+        const params = [assistant_id, task_prompt];
         if (thread_id) {
             params.push(thread_id);
         }
 
         try {
+            // Call the real backend command
             const response = await juliaBridge.runJuliaCommand('run_openai_task', params);
             spinner.stop();
 
@@ -3427,14 +3484,15 @@ async function runOpenAITask() {
             } else if (response && response.result && response.result.success) {
                 spinner.succeed('Task submitted successfully!');
                 console.log(chalk.green('\nTask Submission Details:'));
-                console.log(chalk.cyan(`  Swarm ID:    ${response.result.swarm_id}`));
-                console.log(chalk.cyan(`  Agent Name:  ${response.result.agent_name}`));
-                console.log(chalk.cyan(`  Thread ID:   ${response.result.thread_id}`));
-                console.log(chalk.cyan(`  Run ID:      ${response.result.run_id}`));
-                console.log(chalk.cyan(`  Run Status:  ${response.result.status}`));
+                // Display the IDs returned from the backend
+                console.log(chalk.cyan(`  Assistant ID: ${response.result.swarm_id || assistant_id}`)); // Show the ID used
+                console.log(chalk.cyan(`  Thread ID:    ${response.result.thread_id}`));
+                console.log(chalk.cyan(`  Run ID:       ${response.result.run_id}`));
+                console.log(chalk.cyan(`  Run Status:   ${response.result.status}`));
                 console.log(chalk.yellow('\nUse "Get OpenAI Response" with the Thread ID and Run ID to check status and get results.'));
             } else {
-                console.error(chalk.red('\nFailed to submit task. Unexpected response format:'));
+                spinner.fail('Failed to submit task.');
+                console.error(chalk.red('\nUnexpected response format from backend:'));
                 console.log(response);
             }
         } catch (bridgeError) {
@@ -3443,6 +3501,8 @@ async function runOpenAITask() {
         }
 
     } catch (error) {
+        // Ensure spinner stops on prompt error
+        if (ora.promise.active) ora.promise.active.stop();
         console.error(chalk.red('An error occurred while setting up the OpenAI task:'), error.message);
     }
 
@@ -3456,29 +3516,31 @@ async function getOpenAIResponse() {
         const answers = await inquirer.prompt([
             {
                 type: 'input',
-                name: 'swarm_id',
-                message: 'Enter the OpenAI Swarm ID:',
-                validate: input => input.trim().length > 0 ? true : 'Swarm ID cannot be empty.'
+                name: 'assistant_id',
+                message: 'Enter the OpenAI Assistant ID (used as Swarm ID):',
+                validate: input => input.trim().length > 0 ? true : 'Assistant ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'thread_id',
-                message: 'Enter the Thread ID:',
+                message: 'Enter the Thread ID from the task submission:',
                 validate: input => input.trim().length > 0 ? true : 'Thread ID cannot be empty.'
             },
             {
                 type: 'input',
                 name: 'run_id',
-                message: 'Enter the Run ID:',
+                message: 'Enter the Run ID from the task submission:',
                 validate: input => input.trim().length > 0 ? true : 'Run ID cannot be empty.'
             }
         ]);
 
-        const { swarm_id, thread_id, run_id } = answers;
+        const { assistant_id, thread_id, run_id } = answers;
         const spinner = ora('Fetching response/status from backend...').start();
 
         try {
-            const response = await juliaBridge.runJuliaCommand('get_openai_response', [swarm_id, thread_id, run_id]);
+            // Call the real backend command
+            // Backend expects: assistant_id, thread_id, run_id
+            const response = await juliaBridge.runJuliaCommand('get_openai_response', [assistant_id, thread_id, run_id]);
             spinner.stop();
 
             if (response && response.error) {
@@ -3488,15 +3550,24 @@ async function getOpenAIResponse() {
                 if (result.success) {
                     spinner.succeed(`Status fetched: ${result.status}`);
                     console.log(chalk.green('\nRun Details:'));
-                    console.log(chalk.cyan(`  Swarm ID:    ${result.swarm_id || swarm_id}`));
-                    console.log(chalk.cyan(`  Thread ID:   ${result.thread_id || thread_id}`));
-                    console.log(chalk.cyan(`  Run ID:      ${result.run_id || run_id}`));
-                    console.log(chalk.cyan(`  Status:      ${result.status}`));
+                    console.log(chalk.cyan(`  Assistant ID: ${result.swarm_id || assistant_id}`));
+                    console.log(chalk.cyan(`  Thread ID:    ${result.thread_id || thread_id}`));
+                    console.log(chalk.cyan(`  Run ID:       ${result.run_id || run_id}`));
+                    console.log(chalk.cyan(`  Status:       ${result.status}`));
 
                     if (result.status === 'completed' && result.response) {
                         console.log(chalk.cyan(`\nAssistant Response:`));
-                        console.log(chalk.white(`  ${result.response.content || '(No content found)'}`));
-                        console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                        // Handle potential variations in response structure
+                        if (typeof result.response === 'string') {
+                           console.log(chalk.white(`  ${result.response}`));
+                        } else if (result.response.content) {
+                           console.log(chalk.white(`  ${result.response.content}`));
+                           if (result.response.message_id) {
+                               console.log(chalk.gray(`  (Message ID: ${result.response.message_id})`));
+                           }
+                        } else {
+                           console.log(chalk.yellow(`  (Response content format unclear: ${JSON.stringify(result.response)})`));
+                        }
                     } else if (result.message) {
                          console.log(chalk.yellow(`\nMessage: ${result.message}`));
                     }
@@ -3510,7 +3581,8 @@ async function getOpenAIResponse() {
                      }
                 }
             } else {
-                console.error(chalk.red('\nFailed to get response. Unexpected response format:'));
+                spinner.fail('Failed to get response.');
+                console.error(chalk.red('\nUnexpected response format from backend:'));
                 console.log(response);
             }
         } catch (bridgeError) {
@@ -3519,11 +3591,362 @@ async function getOpenAIResponse() {
         }
 
     } catch (error) {
+        // Ensure spinner stops on prompt error
+        if (ora.promise.active) ora.promise.active.stop();
         console.error(chalk.red('An error occurred while setting up the OpenAI response request:'), error.message);
     }
 
     // Pause
     await inquirer.prompt([{ type: 'input', name: 'continue', message: 'Press Enter to continue...' }]);
+}
+
+// =============================================================================
+// Wormhole Bridge Functions
+// =============================================================================
+
+/**
+ * Bridge tokens using the Wormhole protocol
+ */
+async function bridgeTokensWormhole() {
+    const state = walletManager.getState();
+    if (!state.isConnected) {
+        console.log(chalk.red('Please connect a wallet first.'));
+        await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+        return;
+    }
+
+    console.log(chalk.magenta('\n--- Bridge Tokens via Wormhole ---'));
+
+    try {
+        // Get available chains from the backend
+        const spinner = ora('Fetching available chains...').start();
+
+        let availableChains;
+        try {
+            const chainsResult = await juliaBridge.runJuliaCommand('WormholeBridge.get_available_chains', []);
+            if (!chainsResult.success) {
+                throw new Error(chainsResult.error || 'Failed to fetch chains');
+            }
+            availableChains = chainsResult.chains || Object.keys(CHAIN_NAME_TO_ID);
+            spinner.succeed('Available chains fetched successfully');
+        } catch (error) {
+            spinner.warn(`Failed to fetch chains from backend: ${error.message}`);
+            console.log(chalk.yellow('Using default chain list...'));
+            availableChains = Object.keys(CHAIN_NAME_TO_ID);
+        }
+
+        // Prompt for source and target chains
+        const { sourceChain, targetChain } = await inquirer.prompt([
+            {
+                type: 'list',
+                name: 'sourceChain',
+                message: 'Select source chain:',
+                choices: availableChains,
+                default: state.chainId ? ID_TO_CHAIN_NAME[state.chainId] : 'ethereum'
+            },
+            {
+                type: 'list',
+                name: 'targetChain',
+                message: 'Select target chain:',
+                choices: availableChains.filter(chain => chain !== sourceChain),
+                default: sourceChain === 'ethereum' ? 'solana' : 'ethereum'
+            }
+        ]);
+
+        // Get available tokens for the source chain
+        const tokenSpinner = ora(`Fetching available tokens for ${sourceChain}...`).start();
+
+        let availableTokens;
+        try {
+            const tokensResult = await juliaBridge.runJuliaCommand('WormholeBridge.get_available_tokens', [sourceChain]);
+            if (!tokensResult.success) {
+                throw new Error(tokensResult.error || 'Failed to fetch tokens');
+            }
+            availableTokens = tokensResult.tokens || [
+                { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+                { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+                { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 }
+            ];
+            tokenSpinner.succeed('Available tokens fetched successfully');
+        } catch (error) {
+            tokenSpinner.warn(`Failed to fetch tokens from backend: ${error.message}`);
+            console.log(chalk.yellow('Using default token list...'));
+            availableTokens = [
+                { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+                { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+                { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 }
+            ];
+        }
+
+        // Prompt for token and amount
+        const { tokenSymbol, amount, recipient } = await inquirer.prompt([
+            {
+                type: 'list',
+                name: 'tokenSymbol',
+                message: 'Select token to bridge:',
+                choices: availableTokens.map(token => token.symbol)
+            },
+            {
+                type: 'input',
+                name: 'amount',
+                message: 'Enter amount to bridge:',
+                validate: input => !isNaN(parseFloat(input)) && parseFloat(input) > 0 ? true : 'Please enter a valid amount'
+            },
+            {
+                type: 'input',
+                name: 'recipient',
+                message: `Enter recipient address on ${targetChain}:`,
+                default: state.address, // Default to the connected wallet address
+                validate: input => input.trim().length > 0 ? true : 'Recipient address is required'
+            }
+        ]);
+
+        // Find the selected token
+        const selectedToken = availableTokens.find(token => token.symbol === tokenSymbol);
+        if (!selectedToken) {
+            throw new Error(`Token ${tokenSymbol} not found`);
+        }
+
+        // Convert amount to token units
+        const amountInUnits = ethers.utils.parseUnits(amount, selectedToken.decimals).toString();
+
+        // Confirm the bridge operation
+        console.log(chalk.cyan('\nBridge Operation Summary:'));
+        console.log(`Source Chain: ${sourceChain}`);
+        console.log(`Target Chain: ${targetChain}`);
+        console.log(`Token: ${selectedToken.symbol} (${selectedToken.address})`);
+        console.log(`Amount: ${amount} ${selectedToken.symbol}`);
+        console.log(`Recipient: ${recipient}`);
+
+        const { confirm } = await inquirer.prompt([
+            {
+                type: 'confirm',
+                name: 'confirm',
+                message: 'Do you want to proceed with this bridge operation?',
+                default: false
+            }
+        ]);
+
+        if (!confirm) {
+            console.log(chalk.yellow('Bridge operation cancelled.'));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
+        }
+
+        // Execute the bridge operation
+        const bridgeSpinner = ora('Initiating bridge operation...').start();
+
+        try {
+            const bridgeParams = {
+                sourceChain,
+                targetChain,
+                token: selectedToken.address,
+                amount: amountInUnits,
+                recipient,
+                wallet: state.address
+            };
+
+            const bridgeResult = await juliaBridge.runJuliaCommand('WormholeBridge.bridge_tokens_wormhole', [bridgeParams]);
+
+            if (!bridgeResult.success) {
+                throw new Error(bridgeResult.error || 'Bridge operation failed');
+            }
+
+            bridgeSpinner.succeed('Bridge operation initiated successfully');
+
+            console.log(chalk.green('\nBridge operation initiated!'));
+            console.log(`Transaction Hash: ${bridgeResult.transactionHash}`);
+            console.log(`Status: ${bridgeResult.status}`);
+
+            if (bridgeResult.attestation) {
+                console.log(`Attestation: ${bridgeResult.attestation}`);
+                console.log(chalk.yellow('\nYou will need to redeem the tokens on the target chain.'));
+                console.log(chalk.yellow('Use the "Check Bridge Status (Wormhole)" option to check the status of your bridge operation.'));
+            }
+        } catch (error) {
+            bridgeSpinner.fail(`Bridge operation failed: ${error.message}`);
+        }
+    } catch (error) {
+        console.error(chalk.red(`Error: ${error.message}`));
+    }
+
+    await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+}
+
+/**
+ * Check the status of a Wormhole bridge operation
+ */
+async function checkBridgeStatusWormhole() {
+    console.log(chalk.magenta('\n--- Check Bridge Status (Wormhole) ---'));
+
+    try {
+        const { sourceChain, transactionHash } = await inquirer.prompt([
+            {
+                type: 'list',
+                name: 'sourceChain',
+                message: 'Select source chain:',
+                choices: Object.keys(CHAIN_NAME_TO_ID),
+                default: 'ethereum'
+            },
+            {
+                type: 'input',
+                name: 'transactionHash',
+                message: 'Enter transaction hash:',
+                validate: input => input.trim().length > 0 ? true : 'Transaction hash is required'
+            }
+        ]);
+
+        const spinner = ora('Checking bridge status...').start();
+
+        try {
+            const statusParams = {
+                sourceChain,
+                transactionHash
+            };
+
+            const statusResult = await juliaBridge.runJuliaCommand('WormholeBridge.check_bridge_status_wormhole', [statusParams]);
+
+            if (!statusResult.success) {
+                throw new Error(statusResult.error || 'Failed to check bridge status');
+            }
+
+            spinner.succeed('Bridge status checked successfully');
+
+            console.log(chalk.cyan('\nBridge Status:'));
+            console.log(`Transaction Hash: ${transactionHash}`);
+            console.log(`Source Chain: ${sourceChain}`);
+            console.log(`Status: ${statusResult.status}`);
+
+            if (statusResult.attestation) {
+                console.log(`Attestation: ${statusResult.attestation}`);
+
+                const { redeem } = await inquirer.prompt([
+                    {
+                        type: 'confirm',
+                        name: 'redeem',
+                        message: 'Do you want to redeem the tokens on the target chain?',
+                        default: false
+                    }
+                ]);
+
+                if (redeem) {
+                    await redeemTokensWormhole(statusResult.attestation, statusResult.targetChain);
+                }
+            }
+        } catch (error) {
+            spinner.fail(`Failed to check bridge status: ${error.message}`);
+        }
+    } catch (error) {
+        console.error(chalk.red(`Error: ${error.message}`));
+    }
+
+    await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+}
+
+/**
+ * Redeem tokens on the target chain
+ */
+async function redeemTokensWormhole(attestation, targetChain) {
+    const state = walletManager.getState();
+    if (!state.isConnected) {
+        console.log(chalk.red('Please connect a wallet first.'));
+        return;
+    }
+
+    console.log(chalk.magenta('\n--- Redeem Tokens (Wormhole) ---'));
+
+    try {
+        const spinner = ora('Redeeming tokens...').start();
+
+        try {
+            const redeemParams = {
+                attestation,
+                targetChain,
+                wallet: state.address
+            };
+
+            const redeemResult = await juliaBridge.runJuliaCommand('WormholeBridge.redeem_tokens_wormhole', [redeemParams]);
+
+            if (!redeemResult.success) {
+                throw new Error(redeemResult.error || 'Failed to redeem tokens');
+            }
+
+            spinner.succeed('Tokens redeemed successfully');
+
+            console.log(chalk.green('\nTokens redeemed successfully!'));
+            console.log(`Transaction Hash: ${redeemResult.transactionHash}`);
+            console.log(`Status: ${redeemResult.status}`);
+        } catch (error) {
+            spinner.fail(`Failed to redeem tokens: ${error.message}`);
+        }
+    } catch (error) {
+        console.error(chalk.red(`Error: ${error.message}`));
+    }
+}
+
+/**
+ * View wrapped tokens information
+ */
+async function viewWrappedTokensWormhole() {
+    console.log(chalk.magenta('\n--- View Wrapped Tokens (Wormhole) ---'));
+
+    try {
+        const { originalChain, originalAsset, targetChain } = await inquirer.prompt([
+            {
+                type: 'list',
+                name: 'originalChain',
+                message: 'Select original chain:',
+                choices: Object.keys(CHAIN_NAME_TO_ID),
+                default: 'ethereum'
+            },
+            {
+                type: 'input',
+                name: 'originalAsset',
+                message: 'Enter original asset address:',
+                validate: input => input.trim().length > 0 ? true : 'Asset address is required'
+            },
+            {
+                type: 'list',
+                name: 'targetChain',
+                message: 'Select target chain:',
+                choices: Object.keys(CHAIN_NAME_TO_ID).filter(chain => chain !== originalChain),
+                default: originalChain === 'ethereum' ? 'solana' : 'ethereum'
+            }
+        ]);
+
+        const spinner = ora('Fetching wrapped token information...').start();
+
+        try {
+            const infoParams = {
+                originalChain,
+                originalAsset,
+                targetChain
+            };
+
+            const tokenInfoResult = await juliaBridge.runJuliaCommand('WormholeBridge.get_wrapped_asset_info_wormhole', [infoParams]);
+
+            if (!tokenInfoResult.success) {
+                throw new Error(tokenInfoResult.error || 'Failed to fetch wrapped token information');
+            }
+
+            spinner.succeed('Wrapped token information fetched successfully');
+
+            console.log(chalk.cyan('\nWrapped Token Information:'));
+            console.log(`Original Chain: ${originalChain}`);
+            console.log(`Original Asset: ${originalAsset}`);
+            console.log(`Target Chain: ${targetChain}`);
+            console.log(`Wrapped Address: ${tokenInfoResult.address}`);
+            console.log(`Symbol: ${tokenInfoResult.symbol}`);
+            console.log(`Name: ${tokenInfoResult.name}`);
+            console.log(`Decimals: ${tokenInfoResult.decimals}`);
+        } catch (error) {
+            spinner.fail(`Failed to fetch wrapped token information: ${error.message}`);
+        }
+    } catch (error) {
+        console.error(chalk.red(`Error: ${error.message}`));
+    }
+
+    await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
 }
 
 // Helper function to get agent capabilities based on type
@@ -3532,7 +3955,10 @@ function getAgentCapabilities(type) {
         'Trading': ['market_analysis', 'order_execution', 'risk_management'],
         'Analysis': ['data_processing', 'pattern_recognition', 'prediction'],
         'Execution': ['order_routing', 'position_management', 'risk_control'],
-        'Monitoring': ['system_monitoring', 'alert_management', 'performance_tracking']
+        'Monitoring': ['system_monitoring', 'alert_management', 'performance_tracking'],
+        'Cross Chain Optimizer': ['cross_chain', 'optimization', 'bridge_analysis', 'gas_optimization'],
+        'Portfolio Optimization': ['portfolio_management', 'risk_assessment', 'asset_allocation', 'rebalancing'],
+        'Smart Grid Management': ['energy_monitoring', 'demand_prediction', 'supply_optimization', 'grid_balancing']
     };
     return capabilities[type] || [];
 }

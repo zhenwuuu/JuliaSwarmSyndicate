@@ -49,11 +49,11 @@ const config: HardhatUserConfig = {
     apiKey: process.env.ETHERSCAN_API_KEY
   },
   paths: {
-    sources: "./contracts",
-    tests: "./test",
+    sources: "./packages/contracts",
+    tests: "./packages/contracts/test",
     cache: "./cache",
-    artifacts: "./artifacts"
+    artifacts: "./packages/contracts/artifacts"
   }
 };
 
-export default config; 
+export default config;
