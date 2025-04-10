@@ -1,22 +1,22 @@
-# JuliaOS CLI
+# JuliaOS Julia Backend
 
-A powerful command-line interface for the JuliaOS framework, providing tools to create, manage, and monitor AI-powered trading agents and swarms.
+The Julia backend for the JuliaOS framework, providing computational capabilities for AI-powered trading agents and swarms.
 
 ## Features
 
-- **Interactive Mode**: User-friendly Node.js interface (`scripts/interactive.cjs`) for managing agents and swarms.
-- **Rich Terminal UI**: Color-coded status displays and progress indicators in the CLI.
-- **Real-time Monitoring**: Live monitoring of agent performance and market data
-- **Comprehensive Commands**: Full suite of commands for agent and swarm management
-- **Error Handling**: Clear error messages and stack traces
-- **Configuration Management**: Easy configuration of agents and swarms
+- **Agent System**: Create and manage AI agents for various tasks
+- **Swarm Intelligence**: Implement swarm algorithms for coordinated agent behavior
+- **Bridge System**: Communicate with the Node.js frontend
+- **Blockchain Integration**: Connect to various blockchain networks
+- **Optimization Algorithms**: Implement various optimization algorithms including Differential Evolution
+- **Chainlink Integration**: Real-time price data from Chainlink oracles
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-org/juliaos.git # Replace with actual repo URL if different
-cd juliaos
+git clone https://github.com/Juliaoscode/JuliaOS.git
+cd JuliaOS
 ```
 
 2. Install Node.js dependencies (for the CLI):
@@ -24,24 +24,19 @@ cd juliaos
 npm install
 ```
 
-3. Set up the Julia environment:
+3. Install Julia dependencies:
 ```bash
-cd julia
-julia setup.jl
-```
-   Alternatively, use the bridge setup script:
-```bash
-./scripts/setup_julia_bridge.sh
+julia -e 'using Pkg; Pkg.activate("julia"); Pkg.instantiate()'
 ```
 
 ## Usage
 
 ### Starting the Backend Server
 
-Navigate to the `julia` directory and run the server:
+Use the run-server.sh script to start the Julia server:
 ```bash
-cd julia
-./start.sh
+cd scripts/server
+./run-server.sh
 ```
 This starts the `julia_server.jl` on the configured port (default: 8052).
 
@@ -53,11 +48,12 @@ node scripts/interactive.cjs
 ```
 
 This will start an interactive session where you can:
-- Create new agents and swarms
-- Monitor active agents
+- Create and manage agents
+- Create and manage swarms
+- Monitor agent and swarm performance
 - View market data
-- Manage bridge operations
-- Connect Wallets via the Cross-Chain Hub
+- Manage wallet connections
+- Perform cross-chain operations
 
 ### Command Line Mode (Examples - Adapt as needed based on `scripts/interactive.cjs`)
 
@@ -92,22 +88,29 @@ The primary interface is now the Node.js interactive script. Examples below show
 
 ### Examples
 
-1. Create a new arbitrage agent via the interactive CLI:
+1. Create a new agent via the interactive CLI:
 ```bash
 node scripts/interactive.cjs
-# Select "Agent Management" -> "Create Agent"
-# Choose agent type and configure parameters
+# Select "👤 Agent Management" -> "Create Agent"
+# Enter a name for your agent (e.g., "MyTradingAgent")
+# Select an agent type (e.g., "Portfolio Optimization")
+# Enter agent configuration as JSON (can use {} for defaults)
 ```
 
-2. Run a backtest (if available in Julia backend, triggered via CLI/custom script):
-```bash
-# (Requires specific implementation in Julia modules)
-```
-
-3. Monitor market data (if available via CLI):
+2. Create a swarm via the interactive CLI:
 ```bash
 node scripts/interactive.cjs
-# Explore menus for market data options
+# Select "🐝 Swarm Management" -> "Create Swarm"
+# Enter a name for your swarm (e.g., "MyTradingSwarm")
+# Select a swarm algorithm (e.g., "Differential Evolution")
+# Enter swarm configuration as JSON (can use {} for defaults)
+```
+
+3. Monitor market data via the interactive CLI:
+```bash
+node scripts/interactive.cjs
+# Select "📊 Market Data" -> "View Price Data"
+# Select a token pair to view price data
 ```
 
 ## Configuration
@@ -170,6 +173,13 @@ Run Julia tests:
 cd julia
 julia --project=test test/runtests.jl
 ```
+
+Run specific Julia tests:
+```bash
+cd julia/test
+julia test_swarm_fix.jl
+```
+
 Run Node.js tests (if any exist):
 ```bash
 npm test
@@ -179,16 +189,16 @@ npm test
 
 ### Quick Start
 
-Use the start script in the `julia` directory to launch the server:
+Use the run-server.sh script to launch the server:
 
 ```bash
-cd julia
-./start.sh
+cd scripts/server
+./run-server.sh
 ```
 
 This script:
 1. Checks if Julia is installed
-2. Verifies that dependencies are potentially met (via `Project.toml`)
+2. Verifies that the julia directory exists
 3. Starts `julia_server.jl` on the configured port (default: 8052)
 4. Verifies that the server is running
 
@@ -204,15 +214,14 @@ julia julia_server.jl
 ### Testing the Bridge Connection
 
 You can test the bridge connection by:
-1. Starting the Julia server (`./start.sh`)
+1. Starting the Julia server (`cd scripts/server && ./run-server.sh`)
 2. Running the Node.js interactive CLI (`node scripts/interactive.cjs`)
-3. Using options like "Run System Checks" or "List Agents" which communicate with the backend.
+3. Using options like "System Configuration" or "List Agents" which communicate with the backend.
 
 For specific troubleshooting:
 
 ```bash
-cd julia
-julia troubleshoot.jl
+curl http://localhost:8052/health
 ```
 
 ## Architecture
@@ -226,14 +235,16 @@ julia troubleshoot.jl
 ### Project Structure (`julia` directory)
 
 - `src/` - Source code for the JuliaOS system modules.
+  - `JuliaOS.jl` - Main Julia module.
+  - `AgentSystem.jl` - Agent system implementation.
+  - `SwarmManager.jl` - Swarm management functionality.
+  - `algorithms/` - Implementation of various algorithms including Differential Evolution.
 - `test/` - Tests for the JuliaOS system.
-- `julia_server.jl` - Main HTTP server script.
-- `start.sh` - Script to run the server.
-- `setup.jl` - Script to set up the Julia environment.
+- `julia_server.jl` - Main HTTP/WebSocket server script.
 - `Project.toml` / `Manifest.toml` - Package dependencies.
-- `troubleshoot.jl` - Troubleshooting script.
+- `setup.jl` - Script to set up the Julia environment.
 - `config/` - Configuration files.
-- `docs/`, `examples/`, `use_cases/` - Documentation and examples.
+- `apps/`, `examples/`, `use_cases/` - Documentation and examples.
 
 ### Extending the Bridge
 
@@ -259,7 +270,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 # JuliaOS Server
 
-This is the Julia server component of JuliaOS, providing computational capabilities and bridging with the TypeScript frontend.
+This is the Julia server component of JuliaOS, providing computational capabilities and bridging with the Node.js frontend.
 
 ## Setup
 
@@ -272,18 +283,18 @@ This is the Julia server component of JuliaOS, providing computational capabilit
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-org/juliaos.git
-   cd juliaos
+   git clone https://github.com/Juliaoscode/JuliaOS.git
+   cd JuliaOS
    ```
 
-2. Set up the Julia environment:
+2. Install Julia dependencies:
    ```bash
-   cd julia
-   julia setup.jl
+   julia -e 'using Pkg; Pkg.activate("julia"); Pkg.instantiate()'
    ```
 
-3. Alternatively, use the bridge setup script:
+3. Set up the Julia bridge:
    ```bash
+   cd scripts/server
    ./setup_julia_bridge.sh
    ```
 
@@ -291,16 +302,16 @@ This is the Julia server component of JuliaOS, providing computational capabilit
 
 ### Quick Start
 
-Use the start script to launch the server:
+Use the run-server.sh script to launch the server:
 
 ```bash
-cd julia
-./start.sh
+cd scripts/server
+./run-server.sh
 ```
 
 This script:
 1. Checks if Julia is installed
-2. Verifies that JuliaOSBridge is set up
+2. Verifies that the julia directory exists
 3. Starts the server on port 8052
 4. Verifies that the server is running
 
@@ -310,30 +321,15 @@ To start the server manually:
 
 ```bash
 cd julia
-julia simple_server.jl
-```
-
-Or for the full server with all features:
-
-```bash
-cd julia
-julia start_server.jl
+julia julia_server.jl
 ```
 
 ### Testing
 
-To test the bridge installation:
+To test the server is running:
 
 ```bash
-cd julia
-julia test_bridge.jl
-```
-
-For troubleshooting:
-
-```bash
-cd julia
-julia troubleshoot.jl
+curl http://localhost:8052/health
 ```
 
 ## API Endpoints
@@ -345,61 +341,38 @@ The server provides the following endpoints:
 
 ## Architecture
 
-- `JuliaOSBridge` - Handles communication between TypeScript and Julia
+- `JuliaOSBridge` - Handles communication between Node.js and Julia
 - `JuliaOS` - Core computational engine
 - Supporting modules for specialized functionality
-
-## Development
-
-### Project Structure
-
-- `src/` - Source code for the JuliaOS system
-- `test/` - Tests for the JuliaOS system
-- `packages/julia-bridge/` - JuliaOSBridge implementation
-- `simple_server.jl` - Simplified server for testing and development
-- `start_server.jl` - Full-featured server for production use
-- `setup.jl` - Script to set up the Julia environment
-- `test_bridge.jl` - Tests for the JuliaOSBridge
-- `troubleshoot.jl` - Troubleshooting script
-
-### Extending the Bridge
-
-To extend the JuliaOSBridge with new functionality:
-
-1. Edit `packages/julia-bridge/src/JuliaOSBridge.jl`
-2. Add function implementations to the `_execute_function` mapping
-3. Restart the server for changes to take effect
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Run the troubleshooting script: `julia troubleshoot.jl`
+1. Check if the server is running: `curl http://localhost:8052/health`
 2. Check the server logs
-3. Verify that the JuliaOSBridge is properly installed
-4. Make sure all required packages are installed
+3. Verify that all required Julia packages are installed
+4. Make sure the Julia bridge is properly set up
 
 ## Using the Wallet Connection Feature
 
-JuliaOS includes a wallet connection feature accessible through `scripts/interactive.js` or the standalone `scripts/wallet_test.js` script.
+JuliaOS includes a wallet connection feature accessible through the interactive CLI.
 
 ### Connecting a Wallet
 
 1. Start the Julia server:
    ```bash
-   cd julia
-   ./start.sh
+   cd scripts/server
+   ./run-server.sh
    ```
 
-2. Run the interactive script or wallet test script:
+2. Run the interactive CLI:
    ```bash
-   node scripts/interactive.js
-   # or
-   node scripts/wallet_test.js
+   node scripts/interactive.cjs
    ```
 
 3. To connect a wallet:
-   - From the main menu, select "Cross-Chain Hub"
+   - From the main menu, select "💼 Wallet Management"
    - Choose "Connect Wallet"
    - Select a connection mode:
      - **Address Only (Read-only)**: Enter any wallet address to view (no transactions)
@@ -408,17 +381,17 @@ JuliaOS includes a wallet connection feature accessible through `scripts/interac
    - Enter your address or private key as requested
 
 4. Wallet operations:
-   - View balance (simulated in demonstration mode)
-   - Send transactions (simulated)
+   - View balance
+   - Send transactions
    - View transaction history
    - Disconnect wallet
 
 ### Implementation Notes
 
-- The wallet connection is a demonstration of CLI wallet functionality
-- No real blockchain transactions are executed
-- Private keys are not stored persistently or transmitted anywhere
-- For production use, additional security measures would be needed
+- The wallet connection provides real blockchain interaction capabilities
+- Private keys are never stored persistently
+- All sensitive operations are performed securely
+- For production use, consider using hardware wallets or secure key management solutions
 
 ## Security Best Practices
 
@@ -470,4 +443,4 @@ When extending or modifying the wallet functionality, follow these guidelines:
    - Use hardware wallets or browser extensions when possible
    - Implement rate limiting for authentication attempts
    - Consider multi-factor authentication for high-value operations
-   - Audit your code for security vulnerabilities regularly 
+   - Audit your code for security vulnerabilities regularly

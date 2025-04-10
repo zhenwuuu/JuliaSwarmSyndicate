@@ -1,9 +1,9 @@
 # JuliaOS Open Source AI Agent & Swarm Framework
 
-*joo-LEE-uh-oh-ESS* /ˈdʒuː.li.ə.oʊ.ɛs/  
+*joo-LEE-uh-oh-ESS* /ˈdʒuː.li.ə.oʊ.ɛs/
 
-**Noun**  
-**A powerful multi-chain, community driven, 3 in 1, Web3 focused project aiming at AI and Swarm technological Innovation, powered by Julia.**  
+**Noun**
+**A powerful multi-chain, community driven, 3 in 1, Web3 focused project aiming at AI and Swarm technological Innovation, powered by Julia.**
 
 ![JuliaOS Banner](./banner.png)
 
@@ -26,6 +26,7 @@ JuliaOS is a comprehensive framework for building decentralized applications (DA
 - 🌐 Multi-wallet support (MetaMask, Phantom, Rabby)
 - 🛰️ Chainlink price feeds integration
 - 🌉 AI-optimized cross-chain bridging
+- 🔗 LangChain integration for enhanced AI capabilities
 - ⚙️ Production-ready for testnet use; mainnet deployment with standard security precautions recommended
 - 🗄️ Modular Julia framework with dedicated components
 
@@ -52,10 +53,18 @@ JuliaOS is a comprehensive framework for building decentralized applications (DA
 - **Julia-Powered Agents**: High-performance agent system implemented in Julia
 
 ### Swarm Intelligence
-- **Multiple Algorithms**: PSO (Particle Swarm Optimization), GWO (Grey Wolf Optimizer), ACO (Ant Colony Optimization), GA (Genetic Algorithm), WOA (Whale Optimization Algorithm), DE (Differential Evolution) 
+- **Multiple Algorithms**:
+  - **DE (Differential Evolution)**: Powerful for portfolio optimization and trading strategy development
+  - **PSO (Particle Swarm Optimization)**: Excellent for fast convergence in dynamic markets
+  - **GWO (Grey Wolf Optimizer)**: Adapts well to changing market regimes with hierarchical leadership
+  - **ACO (Ant Colony Optimization)**: Optimizes path-dependent strategies and order execution
+  - **GA (Genetic Algorithm)**: Discovers novel trading rule combinations through evolutionary processes
+  - **WOA (Whale Optimization Algorithm)**: Handles market volatility with bubble-net hunting strategy
 - **Dynamic Coordination**: Real-time agent coordination using swarm intelligence
 - **Adaptable Parameters**: Configurable swarm parameters for different market conditions
 - **Visualization Tools**: Swarm behavior and performance tracking
+- **Multi-objective Optimization**: Balance risk, return, and other objectives simultaneously
+- **Constraint Handling**: Enforce trading constraints and risk limits
 
 ### Wallet Integrations
 - **Browser Wallets**: MetaMask, Phantom, Rabby
@@ -87,6 +96,8 @@ JuliaOS is a comprehensive framework for building decentralized applications (DA
 ### Technical Features
 - **TypeScript/Node.js**: Modern, type-safe implementation
 - **Julia Integration**: High-performance trading logic
+- **LangChain Integration**: Enhanced AI capabilities with LangChain
+- **Python Wrapper**: Python interface for JuliaOS functionality
 - **Prometheus Metrics**: Detailed performance monitoring
 - **Elasticsearch Logging**: Advanced log aggregation
 - **Health Checks**: System and network monitoring
@@ -98,20 +109,20 @@ Before pushing changes to GitHub or any public repository, ensure all sensitive 
 
 ### Security Checklist
 
-1. **Environment Variables**: 
+1. **Environment Variables**:
    - Never commit `.env` files containing real API keys or private keys
    - Use `.env.example` files with placeholder values instead
    - Check that all `.env` files are properly listed in `.gitignore`
 
-2. **Wallet Data**: 
+2. **Wallet Data**:
    - All wallet files (JSON, keystore, etc.) should be excluded via `.gitignore`
    - Verify no private keys or mnemonics are hardcoded in any files
 
-3. **API Keys**: 
+3. **API Keys**:
    - Remove any hardcoded API keys from the codebase
    - Use environment variables or secure key management solutions
 
-4. **Test Data**: 
+4. **Test Data**:
    - Sanitize test data to remove any sensitive information
    - Use mock data for tests rather than real account information
 
@@ -142,14 +153,15 @@ The `.gitignore` file is configured to exclude sensitive files including:
 
 ### Prerequisites
 
-Before you begin, ensure you have ONE of the following options:
+Before you begin, ensure you have the following installed:
 
-#### Option 1: Node.js (Direct Execution)
+#### Required Dependencies
 - [Node.js](https://nodejs.org/) (v16 or later)
 - [npm](https://www.npmjs.com/) (v7 or later)
+- [Julia](https://julialang.org/downloads/) (v1.8 or later)
 
-#### Option 2: Docker (Containerized Execution)
-- [Docker](https://www.docker.com/get-started) installed and running
+#### Optional Dependencies
+- [Docker](https://www.docker.com/get-started) for containerized execution (optional, see Docker section below)
 
 ### API Keys Setup (Optional)
 
@@ -172,103 +184,177 @@ Without API keys, the CLI will still function but will use simulated responses i
 
 The JuliaOS CLI provides a command-line interface for creating and managing AI-powered trading agents and swarms.
 
-#### Using the Interactive CLI
+#### First-time Setup
 
-Our interactive CLI is the recommended way to interact with JuliaOS, providing a user-friendly interface with menus and visualizations:
+When using JuliaOS for the first time, you need to install the required Julia packages:
 
 ```bash
 # Clone this repository
 git clone https://github.com/Juliaoscode/JuliaOS.git
 cd JuliaOS
 
-# Start the Julia server (in a separate terminal)
-cd julia
-./start.sh
+# Install Node.js dependencies
+npm install
 
-# Run the interactive CLI
+# Install Julia dependencies
+julia -e 'using Pkg; Pkg.activate("julia"); Pkg.instantiate()'
+```
+
+#### Using the Interactive CLI
+
+Our interactive CLI is the recommended way to interact with JuliaOS, providing a user-friendly interface with menus and visualizations:
+
+```bash
+# Start the Julia server (in a separate terminal)
+cd scripts/server
+./run-server.sh
+
+# In another terminal, run the interactive CLI
 node scripts/interactive.cjs
 ```
 
 You can also use the script with various options:
 
 ```bash
-# Run interactive CLI with existing server
-node scripts/interactive_use_existing.cjs
-
 # Run interactive CLI with custom config
 node scripts/interactive.cjs --config ./my-config.json
+
+# Get help on available options
+node scripts/interactive.cjs --help
 ```
+
+### Using Docker (Experimental)
+
+The project includes Docker configuration files for containerized execution. Note that the Docker setup is currently experimental and requires adjustments before it can be used. The instructions below are provided as a starting point, but you will need to modify the Docker files to match your environment.
+
+#### Running with Docker Compose
+
+```bash
+# Clone this repository
+git clone https://github.com/Juliaoscode/JuliaOS.git
+cd JuliaOS
+
+# Build and start the containers
+docker-compose up -d
+
+# Check if the containers are running
+docker-compose ps
+
+# Access the interactive CLI through the julia-server container
+docker exec -it juliaos_julia-server_1 node scripts/interactive.cjs
+```
+
+#### Building and Running Individual Containers
+
+```bash
+# Build the Julia server container
+docker build -t juliaos-julia-server -f julia/Dockerfile ./julia
+
+# Run the Julia server container
+docker run -d -p 8052:8052 --name juliaos-julia-server juliaos-julia-server
+
+# Run the interactive CLI locally (connecting to the containerized Julia server)
+node scripts/interactive.cjs
+```
+
+> **Note**: The Docker setup may need adjustments based on your specific environment and requirements. If you encounter issues, please refer to the troubleshooting section or consider using the direct installation method.
 
 ### Example: Creating and Running a Simple Agent
 
 ```bash
 # 1. Start the Julia server in one terminal
-cd julia
-./start.sh
+cd scripts/server
+./run-server.sh
 
 # 2. Run the interactive CLI in another terminal
 node scripts/interactive.cjs
 
 # 3. From the interactive menu:
-# - Select "Agent Management"
-# - Select "Create AI Agent"
-# - Follow the prompts to configure your agent
-# - Once created, you can start it from the same menu
+# - Select "👤 Agent Management"
+# - Select "Create Agent"
+# - Enter a name for your agent (e.g., "MyTradingAgent")
+# - Select an agent type (e.g., "Portfolio Optimization")
+# - Enter agent configuration as JSON (can use {} for defaults)
+# - Once created, you can manage your agent from the same menu
 ```
 
 For more detailed examples and use cases, refer to the examples in each package's documentation.
+
+### Troubleshooting
+
+#### Julia Server Issues
+
+- **Julia server fails to start**: Make sure Julia is installed correctly and all required packages are installed. Try running `julia -e 'using Pkg; Pkg.activate("julia"); Pkg.instantiate()'` to install all required packages.
+
+- **Connection refused errors**: Ensure the Julia server is running on port 8052. Check with `curl http://localhost:8052/health` to see if the server is responding.
+
+- **Package errors**: If you encounter package-related errors, try updating your Julia packages with `julia -e 'using Pkg; Pkg.activate("julia"); Pkg.update()'`.
+
+#### Docker Issues
+
+- **Build failures**: The current Docker setup has path issues that need to be fixed. You'll need to modify the Dockerfile in the julia directory to correctly reference files.
+
+- **Container fails to start**: Check the logs with `docker-compose logs julia-server` to see what's causing the issue.
+
+- **Missing files in container**: The Docker setup needs adjustments to ensure all necessary files are included. Check the Dockerfile and docker-compose.yml files.
+
+- **Port conflicts**: If port 8052 is already in use, modify the port mapping in docker-compose.yml to use a different port.
+
+- **Missing start_server.jl**: The julia/Dockerfile references a start_server.jl file that doesn't exist. You'll need to modify the CMD line to use julia_server.jl instead.
 
 ## Architecture Overview
 
 ```mermaid
 graph TB
     %% Main user flow
-    User(["User"]) --> |"interacts with"| CLI["CLI (interactive.cjs)"]
+    User(["User"]) --> |"interacts with"| CLI["CLI (scripts/interactive.cjs)"]
     CLI --> |"calls"| JuliaBridge["Julia Bridge"]
-    JuliaBridge --> |"WebSocket (port 8052)"| SimpleServer["julia_server.jl"]
+    JuliaBridge --> |"WebSocket (port 8052)"| SimpleServer["julia/julia_server.jl"]
     SimpleServer --> |"executes"| JuliaModules["Julia Backend Modules"]
-    
+
     subgraph "JuliaOS Framework"
         subgraph "Client Side (TypeScript/JavaScript)"
             CLI
             JuliaBridge
             CorePackages["Core Packages (packages/)"]
         end
-        
+
         subgraph "Server Side (Julia)"
             SimpleServer
             JuliaModules
+            ServerScripts["Server Scripts (scripts/server/)"]
         end
-        
+
         subgraph "Cross-Chain Infrastructure"
-            BridgeRelay["/bridges/relay Service"]
+            BridgeRelay["Bridge Relay Service"]
             Bridges["Blockchain Bridges"]
             Contracts["Smart Contracts"]
         end
-        
+
         %% Internal connections
         CorePackages --> JuliaBridge
         CLI --> CorePackages
+        ServerScripts --> SimpleServer
         CorePackages --> BridgeRelay
         BridgeRelay --> Bridges
         Bridges --> Contracts
     end
-    
+
     %% External connection
     Contracts <--> |"interact with"| Blockchains(["External Blockchains"])
-    
+
     %% Styling
     classDef mainFlow fill:#f9f,stroke:#333,stroke-width:2px;
     class User,CLI,JuliaBridge,SimpleServer,JuliaModules mainFlow;
-    
+
     classDef clientSide fill:#d4f4fa,stroke:#333,stroke-width:1px;
     classDef serverSide fill:#fad4d4,stroke:#333,stroke-width:1px;
-    
+
     class CLI,JuliaBridge,CorePackages clientSide;
-    class SimpleServer,JuliaModules serverSide;
+    class SimpleServer,JuliaModules,ServerScripts serverSide;
 ```
 
-**Architecture Notes:** The JuliaOS framework follows a client-server architecture. The Julia backend runs as a WebSocket/HTTP server on port 8052 (julia_server.jl), while TypeScript/JavaScript clients connect to this server via WebSocket. The interactive CLI (scripts/interactive.cjs) serves as the primary user interface, communicating with the Julia backend through the Julia Bridge package. All computational intelligence is performed server-side in the Julia modules, with results returned to the clients.
+**Architecture Notes:** The JuliaOS framework follows a client-server architecture. The Julia backend runs as a WebSocket/HTTP server on port 8052 (julia/julia_server.jl), while TypeScript/JavaScript clients connect to this server via WebSocket. The interactive CLI (scripts/interactive.cjs) serves as the primary user interface, communicating with the Julia backend through the Julia Bridge package. Server scripts in the scripts/server directory provide utilities for starting and managing the Julia server. All computational intelligence is performed server-side in the Julia modules, with results returned to the clients.
 
 ## Architecture
 
@@ -286,8 +372,7 @@ Root Directory
 │   ├── apps/              # Application-specific Julia code
 │   ├── examples/          # Example Julia implementations
 │   ├── test/              # Julia tests
-│   ├── use_cases/         # Example use cases
-│   └── start.sh           # Script to start the Julia server
+│   └── use_cases/         # Example use cases
 │
 ├── packages/              # TypeScript/JavaScript packages (monorepo)
 │   ├── framework/         # Julia-based framework modules
@@ -304,13 +389,23 @@ Root Directory
 │   ├── agent-manager/     # High-level agent management
 │   ├── cross-chain-router/# Cross-chain routing functionality
 │   ├── protocols/         # Blockchain protocol implementations
+│   ├── bridges/           # Cross-chain bridge implementations
 │   └── ...                # Other TypeScript packages
 │
 ├── scripts/               # Utility scripts
 │   ├── interactive.cjs    # Main interactive CLI (connects to Julia server)
+│   ├── server/            # Server management scripts
+│   │   ├── run-server.sh  # Script to run the Julia server
+│   │   ├── setup_julia_bridge.sh # Script to set up Julia bridge
+│   │   ├── start-services.sh # Script to start all services
+│   │   └── start.sh       # Script to start the Julia server
+│   ├── test/              # Test scripts
 │   └── ...                # Other scripts
 │
-├── bridges/               # Cross-chain bridge implementations
+├── data/                  # Runtime data storage
+│   ├── agents/            # Agent data storage
+│   └── ...                # Other data directories
+│
 └── contracts/             # Smart contract implementations
 ```
 
@@ -320,14 +415,14 @@ Root Directory
    - **Server**: Julia backend running as a WebSocket server on port 8052
    - **Client**: TypeScript/JavaScript frontend and CLI that connect to the server
 
-2. **Julia Backend (`/julia`)**: 
+2. **Julia Backend (`/julia`)**:
    - Serves as the computational engine for the entire system
    - Handles agent creation, management, and coordination
    - Performs cross-chain operations and route optimization
    - Manages swarm intelligence algorithms
    - Exposes functionality via WebSocket/HTTP interface
 
-3. **TypeScript Frontend (`/packages`)**: 
+3. **TypeScript Frontend (`/packages`)**:
    - Provides user interfaces and abstractions
    - Communicates with the Julia backend via WebSocket
    - Includes a CLI for user interactions
@@ -340,7 +435,7 @@ Root Directory
 
 5. **Communication Flow**:
    ```
-   User → interactive.cjs → julia-bridge → julia/julia_server.jl → Julia Backend Modules
+   User → scripts/interactive.cjs → julia-bridge → julia/julia_server.jl → Julia Backend Modules
    ```
 
 For a detailed architecture overview, see the README files in each package:

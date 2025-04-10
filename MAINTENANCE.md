@@ -8,28 +8,40 @@ The JuliaOS Framework follows this organizational structure:
 
 ```
 .
-├── agents/           # Root agent definitions (system level)
-├── bridges/          # Cross-chain bridge implementations
-│   ├── relay/        # Bridge relay service
-│   ├── saved-routes/ # Saved bridge routes
-│   └── solana-bridge/ # Solana bridge implementation
-├── cli/              # CLI application
-│   ├── agents/       # User-created agents (local data)
-│   ├── data/         # CLI application data
-│   ├── old-files/    # Archived files (can be deleted eventually)
-│   ├── src/          # CLI source code
-│   └── swarms/       # User-created swarms (local data)
-├── contracts/        # Smart contracts
-├── docs/             # Documentation
+├── data/             # Runtime data storage
+│   ├── agents/       # Agent data storage
+│   └── ...           # Other data directories
 ├── julia/            # Julia language components
 │   ├── src/          # Julia source code
-│   └── test/         # Julia tests
-├── old-files/        # Root-level archived files
+│   │   ├── JuliaOS.jl     # Main Julia module
+│   │   ├── AgentSystem.jl # Agent system implementation
+│   │   ├── SwarmManager.jl # Swarm management functionality
+│   │   └── ...            # Other Julia components
+│   ├── julia_server.jl    # WebSocket/HTTP server (port 8052)
+│   ├── apps/              # Application-specific Julia code
+│   ├── examples/          # Example Julia implementations
+│   ├── test/             # Julia tests
+│   └── use_cases/        # Example use cases
 ├── packages/         # Core packages (monorepo)
+│   ├── framework/    # Julia-based framework modules
+│   │   ├── agents/   # Agent system interfaces for Julia backend
+│   │   ├── swarms/   # Swarm intelligence algorithm interfaces
+│   │   ├── blockchain/ # Blockchain interaction interfaces
+│   │   ├── bridge/   # Communication bridge interfaces
+│   │   ├── wallet/   # Wallet management interfaces
+│   │   └── utils/    # Utility functions
+│   ├── julia-bridge/ # WebSocket bridge to Julia backend
 │   ├── core/         # Framework core functionality
-│   ├── julia-bridge/ # TypeScript-Julia integration
+│   ├── wallets/      # Wallet integrations (MetaMask, Phantom, Rabby)
+│   ├── bridges/      # Cross-chain bridge implementations
 │   └── ...           # Other packages
 ├── scripts/          # Utility scripts
+│   ├── interactive.cjs # Main interactive CLI (connects to Julia server)
+│   ├── server/       # Server management scripts
+│   │   ├── run-server.sh  # Script to run the Julia server
+│   │   └── ...       # Other server scripts
+│   └── ...           # Other scripts
+├── contracts/        # Smart contracts
 └── ...
 ```
 
@@ -39,31 +51,28 @@ The JuliaOS Framework follows this organizational structure:
 
 The framework provides several scripts to run the application:
 
-1. **j3os.bat / j3os.sh**: Main entry point scripts with full functionality
-   - Options for Docker, native, enhanced/standard modes
-   - Command: `./j3os.sh` or `j3os.bat`
-   - For help: `./j3os.sh --help` or `j3os.bat --help`
+1. **scripts/interactive.cjs**: Main interactive CLI
+   - Command: `node scripts/interactive.cjs`
+   - For help: `node scripts/interactive.cjs --help`
 
-2. **cli/run-cli.bat / cli/run-cli.sh**: Simple CLI runners
-   - Command: `cd cli && ./run-cli.sh` or `cd cli && run-cli.bat`
+2. **scripts/server/run-server.sh**: Script to run the Julia server
+   - Command: `cd scripts/server && ./run-server.sh`
 
 ### Usage Examples
 
-```
-# Run enhanced CLI (default)
-./j3os.sh
-# or on Windows
-j3os.bat
+```bash
+# Start the Julia server
+cd scripts/server
+./run-server.sh
 
-# Run in Docker mode
-./j3os.sh --docker
-# or on Windows
-j3os.bat --docker
+# In another terminal, run the interactive CLI
+node scripts/interactive.cjs
 
-# Run with a specific command
-./j3os.sh wallet create
-# or on Windows
-j3os.bat wallet create
+# Run with custom configuration
+node scripts/interactive.cjs --config ./my-config.json
+
+# Get help on available options
+node scripts/interactive.cjs --help
 ```
 
 ## Clean Code Guidelines
@@ -75,18 +84,18 @@ j3os.bat wallet create
 
 ## Where to Put New Code
 
-- **New CLI Features**: Add to `cli/src/commands/` for command handlers and `cli/src/` for core functionality.
+- **New CLI Features**: Add to `scripts/interactive.cjs` for interactive CLI functionality.
 - **New Julia Backend Features**: Add to `julia/src/` in the appropriate module.
-- **New Cross-Chain Features**: Add to `bridges/` for bridge implementations.
-- **New Packages**: Add to `packages/` for reusable modules.
+- **New Cross-Chain Features**: Add to `packages/bridges/` for bridge implementations.
+- **New Framework Modules**: Add to `packages/framework/` for reusable modules.
 
 ## Before Committing
 
-1. **Clean Build Artifacts**: 
+1. **Clean Build Artifacts**:
    ```
    # Clean dist directories
    npm run clean
-   
+
    # Remove other build artifacts if needed
    rm -rf .turbo/ dist/ target/ artifacts/ cache/
    ```
@@ -118,6 +127,7 @@ As the project evolves, periodically review and clean up:
 
 ## Maintaining Julia Integration
 
-1. **Julia-TypeScript Bridge**: Any changes to `julia/src/server.jl` should be reflected in `packages/julia-bridge/src/index.ts`
+1. **Julia-TypeScript Bridge**: Any changes to `julia/julia_server.jl` should be reflected in `packages/julia-bridge/src/index.ts`
 2. **Julia Packages**: Keep the `julia/Project.toml` file updated with dependencies
-3. **Julia Environment**: Update `julia/setup.jl` if new dependencies are required 
+3. **Julia Environment**: Update `julia/setup.jl` if new dependencies are required
+4. **Server Scripts**: Update scripts in `scripts/server/` if server startup procedures change

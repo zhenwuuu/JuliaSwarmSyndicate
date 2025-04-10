@@ -1,73 +1,93 @@
-# @juliaos/core
+# JuliaOS Core
 
-Core package for the JuliaOS framework, providing the foundation for AI-powered DeFi trading with swarm optimization.
+Core package for the JuliaOS framework, providing the foundation for AI-powered agents and swarms with optimization algorithms.
 
 ## Features
 
-- DeFi Trading Skill with risk management
-- Swarm Agent for distributed decision making
+- Agent System for creating and managing AI agents
+- Swarm Intelligence for coordinated agent behavior
 - Julia Bridge for optimization algorithms
-- Cross-chain support
-- Real-time market data integration
+- Cross-chain support for blockchain interactions
+- Real-time market data integration with Chainlink
+- Differential Evolution algorithm implementation
 
 ## Installation
 
 ```bash
-npm install @juliaos/core
+# Clone the repository
+git clone https://github.com/Juliaoscode/JuliaOS.git
+cd JuliaOS
+
+# Install dependencies
+npm install
 ```
 
 ## Usage
 
-```typescript
-import { SwarmAgent } from '@juliaos/core/agents';
-import { DeFiTradingSkill } from '@juliaos/core/skills';
-import { JuliaBridge } from '@juliaos/core/bridge';
+```javascript
+const { JuliaBridge } = require('./packages/julia-bridge');
+const { AgentManager } = require('./packages/framework/agents');
+const { SwarmManager } = require('./packages/framework/swarms');
 
-// Initialize components
+// Initialize the Julia bridge
 const juliaBridge = new JuliaBridge({
-  juliaPath: 'julia',
-  scriptPath: './julia/src',
-  port: 8000
+  host: 'localhost',
+  port: 8052
 });
 
-const swarmAgent = new SwarmAgent({
-  name: 'trading-swarm',
-  type: 'trading',
-  platforms: [],
-  skills: [],
-  swarmConfig: {
-    size: 10,
-    communicationProtocol: 'gossip',
-    consensusThreshold: 0.7,
-    updateInterval: 5000
+// Connect to the JuliaOS backend
+juliaBridge.connect().then(async (connected) => {
+  if (connected) {
+    // Create an agent manager
+    const agentManager = new AgentManager(juliaBridge);
+
+    // Create a swarm manager
+    const swarmManager = new SwarmManager(juliaBridge);
+
+    // Create a portfolio optimization agent
+    const agent = await agentManager.createAgent({
+      name: 'portfolio_agent',
+      type: 'PortfolioOptimization',
+      skills: ['market_analysis', 'risk_management'],
+      chains: ['Ethereum', 'Solana'],
+      config: {
+        assets: ['ETH', 'SOL', 'USDC'],
+        risk_tolerance: 0.5,
+        rebalance_interval: 86400 // 1 day in seconds
+      }
+    });
+
+    // Create a swarm using Differential Evolution
+    const swarm = await swarmManager.createSwarm({
+      name: 'portfolio_swarm',
+      algorithm: 'DifferentialEvolution',
+      objective: 'maximize_sharpe_ratio',
+      config: {
+        population_size: 30,
+        crossover_rate: 0.7,
+        mutation_factor: 0.8,
+        max_generations: 100
+      }
+    });
+
+    // Add agent to swarm
+    await swarmManager.addAgentToSwarm(swarm.id, agent.id);
+
+    // Start swarm
+    await swarmManager.startSwarm(swarm.id);
   }
 });
-
-const tradingSkill = new DeFiTradingSkill(swarmAgent, {
-  tradingPairs: ['ETH/USDC', 'WBTC/USDC'],
-  swarmSize: 10,
-  algorithm: 'pso',
-  riskParameters: {
-    maxPositionSize: 1,
-    stopLoss: 0.02,
-    takeProfit: 0.05,
-    maxDrawdown: 0.1
-  },
-  provider: 'YOUR_RPC_URL',
-  wallet: 'YOUR_PRIVATE_KEY'
-});
-
-// Start trading
-await juliaBridge.initialize();
-await swarmAgent.initialize();
-await tradingSkill.initialize();
-await tradingSkill.execute();
 ```
 
 ## Documentation
 
-For detailed documentation, visit our [documentation site](https://docs.juliaos.ai).
+For more detailed documentation, refer to the README files in the respective module directories:
+
+- [Framework README](../framework/README.md)
+- [Julia Bridge README](../julia-bridge/README.md)
+- [Agents README](../framework/agents/README.md)
+- [Swarms README](../framework/swarms/README.md)
 
 ## License
 
-MIT 
+MIT License

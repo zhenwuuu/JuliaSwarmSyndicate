@@ -32,6 +32,9 @@ include("Storage.jl")
 include("Web3Storage.jl")
 include("Sync.jl")
 include("Bridge.jl")
+include("Wallet.jl")
+include("WalletIntegration.jl")
+include("WormholeBridge.jl")
 include("MarketData.jl")
 include("algorithms/Algorithms.jl")
 include("SwarmManager.jl")
@@ -47,7 +50,7 @@ include("UserModules.jl")
 include("OpenAISwarmAdapter.jl")
 
 # Export public components
-export Blockchain, SecurityTypes, Bridge, SwarmManager, SecurityManager, AgentSystem, DEX, MarketData, MLIntegration, AdvancedSwarm, SpecializedAgents, CrossChainArbitrage, RiskManagement, UserModules, OpenAISwarmAdapter, Algorithms, Storage, Web3Storage, Sync
+export Blockchain, SecurityTypes, Bridge, Wallet, WalletIntegration, WormholeBridge, SwarmManager, SecurityManager, AgentSystem, DEX, MarketData, MLIntegration, AdvancedSwarm, SpecializedAgents, CrossChainArbitrage, RiskManagement, UserModules, OpenAISwarmAdapter, Algorithms, Storage, Web3Storage, Sync
 
 # Initialize logging
 const logger = SimpleLogger(stderr, Logging.Info)
@@ -95,15 +98,15 @@ function initialize_system()
             @info "Created directory: $dir"
         end
     end
-    
+
     # Initialize logging
     log_file = joinpath(CONFIG["log_dir"], "juliaos_$(Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")).log")
     file_logger = SimpleLogger(open(log_file, "w"), Logging.Info)
     global_logger(logger)
-    
+
     # Initialize storage
     Storage.init_db()
-    
+
     # Configure Web3 storage if API key is available
     if CONFIG["storage"]["ipfs_api_key"] != ""
         Web3Storage.configure(
@@ -111,7 +114,7 @@ function initialize_system()
             ipfs_api_url_arg=CONFIG["storage"]["ipfs_api_url"],
             ipfs_api_key_arg=CONFIG["storage"]["ipfs_api_key"]
         )
-        
+
         # Initialize sync
         Sync.init_sync()
         if CONFIG["storage"]["auto_sync_enabled"]
@@ -119,10 +122,10 @@ function initialize_system()
             Sync.set_auto_sync_interval(CONFIG["storage"]["auto_sync_interval"])
         end
     end
-    
+
     # Load user modules
     UserModules.load_user_modules()
-    
+
     @info "JuliaOS system initialized"
 end
 
@@ -131,24 +134,24 @@ function check_system_health()
     cpu_cores = Sys.cpu_info()
     total_memory = Sys.total_memory() / (1024^3)  # Convert to GB
     free_memory = Sys.free_memory() / (1024^3)    # Convert to GB
-    
+
     bridge_status = try
         Bridge.check_connections()
     catch e
         Dict("status" => "error", "error" => string(e))
     end
-    
+
     server_status = try
         Server.get_status()
     catch e
         Dict("status" => "error", "error" => string(e))
     end
-    
+
     storage_status = try
         db_exists = isfile(CONFIG["storage"]["local_db_path"])
         web3_configured = CONFIG["storage"]["ipfs_api_key"] != ""
         sync_status = web3_configured ? Sync.get_sync_status() : Dict("sync_enabled" => false)
-        
+
         Dict(
             "status" => "healthy",
             "local_db" => db_exists ? "connected" : "not found",
@@ -158,7 +161,7 @@ function check_system_health()
     catch e
         Dict("status" => "error", "error" => string(e))
     end
-    
+
     return Dict(
         "status" => "healthy",
         "timestamp" => now(),
@@ -184,7 +187,7 @@ export initialize_system, check_system_health
 # Module initialization
 function __init__()
     @info "JuliaOS runtime initialization"
-    
+
     # Initialize core systems
     try
         AgentSystem.initialize()
@@ -192,16 +195,16 @@ function __init__()
     catch e
         @error "Failed to initialize AgentSystem: $e" stacktrace(catch_backtrace())
     end
-    
+
     try
         SwarmManager.initialize()
         @info "SwarmManager initialized."
     catch e
         @error "Failed to initialize SwarmManager: $e" stacktrace(catch_backtrace())
     end
-    
-    # Runtime initialization code 
+
+    # Runtime initialization code
     # (This runs after all modules are loaded but before any user code executes)
 end
 
-end # module 
+end # module
