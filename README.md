@@ -20,7 +20,7 @@ graph TD
         UserSDK[Developer via SDK]
     end
 
-    subgraph Client Layer (TypeScript/Node.js)
+    subgraph Client Layer - TypeScript/Node.js
         direction TB
         CLI["scripts/interactive.cjs <br> (uses packages/cli)"]
         Framework["Framework Packages <br> (packages/framework, /core, /wallets, etc.)"]
@@ -39,12 +39,12 @@ graph TD
         BridgeComms["WebSocket/HTTP <br> (Port 8052)"]
     end
 
-    subgraph Server Layer (Julia Backend - julia/)
+    subgraph Server Layer - Julia Backend
         direction TB
         JuliaServer["Julia Server <br> (julia_server.jl)"]
         JuliaBridge["Julia Bridge Server <br> (src/Bridge.jl)"]
         
-        subgraph Core Modules (julia/src/)
+        subgraph Core Modules - julia/src
             AgentSys["AgentSystem.jl"]
             Swarms["Swarms.jl <br> (DE, PSO, GWO, ACO, GA, WOA)"]
             SwarmMgr["SwarmManager.jl"]
