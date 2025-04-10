@@ -12,88 +12,6 @@
 
 JuliaOS is a comprehensive framework for building decentralized applications (DApps) with a focus on agent-based architectures, swarm intelligence, and cross-chain trading. It provides both a CLI interface for quick deployment and a framework API for custom implementations. By leveraging AI-powered agents and swarm optimization, JuliaOS enables sophisticated trading strategies across multiple blockchains.
 
-```mermaid
-graph TD
-    subgraph User Interaction
-        direction LR
-        UserCLI[End User via CLI]
-        UserSDK[Developer via SDK]
-    end
-
-    subgraph Client Layer (TypeScript/Node.js)
-        direction TB
-        CLI["scripts/interactive.cjs <br> (uses packages/cli)"]
-        Framework["Framework Packages <br> (packages/framework, /core, /wallets, etc.)"]
-        PyWrapper["Python Wrapper <br> (packages/python-wrapper)"]
-        JSBridge["JS Bridge Client <br> (packages/julia-bridge)"]
-
-        CLI --> Framework
-        UserSDK --> Framework
-        UserSDK --> PyWrapper
-        Framework --> JSBridge
-        PyWrapper --> JSBridge # Assuming Python wrapper also uses the bridge
-    end
-
-    subgraph Communication Layer
-        direction TB
-        BridgeComms["WebSocket/HTTP <br> (Port 8052)"]
-    end
-
-    subgraph Server Layer (Julia Backend - julia/)
-        direction TB
-        JuliaServer["Julia Server <br> (julia_server.jl)"]
-        JuliaBridge["Julia Bridge Server <br> (src/Bridge.jl)"]
-        
-        subgraph Core Modules (julia/src/)
-            AgentSys["AgentSystem.jl"]
-            Swarms["Swarms.jl <br> (DE, PSO, GWO, ACO, GA, WOA)"]
-            SwarmMgr["SwarmManager.jl"]
-            Blockchain["Blockchain.jl (EVM)"]
-            DEX["DEX.jl (Uniswap V3)"]
-            Web3Store["Web3Storage.jl <br> (Ceramic, IPFS)"]
-            OpenAIAdapter["OpenAISwarmAdapter.jl"]
-            SecurityMgr["SecurityManager.jl"]
-            UserModules["UserModules.jl"]
-        end
-
-        JuliaServer -- receives --> JuliaBridge
-        JuliaBridge -- dispatches to --> AgentSys
-        JuliaBridge -- dispatches to --> Swarms
-        JuliaBridge -- dispatches to --> SwarmMgr
-        JuliaBridge -- dispatches to --> Blockchain
-        JuliaBridge -- dispatches to --> DEX
-        JuliaBridge -- dispatches to --> Web3Store
-        JuliaBridge -- dispatches to --> OpenAIAdapter
-        SwarmMgr --> DEX
-        SwarmMgr --> Blockchain
-    end
-
-    subgraph External Services
-        direction TB
-        RPC["Blockchain RPC Nodes <br> (e.g., Infura, Alchemy)"]
-        W3S["Web3.Storage API <br> (IPFS Pinning)"]
-        Ceramic["Ceramic Network Node"]
-        OpenAI["OpenAI API"]
-    end
-
-    UserCLI --> CLI
-
-    JSBridge -- "sends/receives" --> BridgeComms
-    BridgeComms -- "sends/receives" --> JuliaServer
-
-    Blockchain -- interacts with --> RPC
-    Web3Store -- interacts with --> W3S
-    Web3Store -- interacts with --> Ceramic
-    OpenAIAdapter -- interacts with --> OpenAI
-
-    classDef client fill:#d4f4fa,stroke:#333,stroke-width:1px;
-    classDef server fill:#fad4d4,stroke:#333,stroke-width:1px;
-    classDef external fill:#lightgrey,stroke:#333,stroke-width:1px;
-    class CLI,Framework,PyWrapper,JSBridge client;
-    class JuliaServer,JuliaBridge,AgentSys,Swarms,SwarmMgr,Blockchain,DEX,Web3Store,OpenAIAdapter,SecurityMgr,UserModules server;
-    class RPC,W3S,Ceramic,OpenAI external;
-```
-
 ## Features
 
 ### Core Features
@@ -364,54 +282,85 @@ For more detailed examples and use cases, refer to the examples in each package'
 ## Architecture Overview
 
 ```mermaid
-graph TB
-    %% Main user flow
-    User(["User"]) --> |"interacts with"| CLI["CLI (scripts/interactive.cjs)"]
-    CLI --> |"uses"| Framework["Framework (packages/framework, core, etc.)"]
-    Framework --> |"calls"| JSBridge["JS Bridge (packages/julia-bridge)"]
-    JSBridge --> |"WebSocket/HTTP (port 8052)"| JuliaServer["Julia Server (julia/julia_server.jl)"]
-    JuliaServer --> |"dispatches via"| JuliaBridge["Julia Bridge (julia/src/Bridge.jl)"]
-    JuliaBridge --> |"executes"| JuliaModules["Julia Modules (julia/src/*)"]
-
-    subgraph "JuliaOS Framework"
-        subgraph "Client Side (TypeScript/JavaScript)"
-            CLI
-            Framework
-            JSBridge
-        end
-
-        subgraph "Server Side (Julia)"
-            JuliaServer
-            JuliaBridge
-            JuliaModules
-            ServerScripts["Server Scripts (scripts/server/)"]
-        end
-
-        subgraph "External Interactions"
-           BlockchainRPC["Blockchain RPC"]
-           Web3StorageAPI["Web3 Storage API"]
-           OpenAI_API["OpenAI API"]
-        end
-
-        %% Internal connections
-        CLI -- uses --> Framework
-        Framework -- calls --> JSBridge
-        JuliaModules -- interacts with --> BlockchainRPC
-        JuliaModules -- interacts with --> Web3StorageAPI
-        JuliaModules -- interacts with --> OpenAI_API
-
+graph TD
+    subgraph User Interaction
+        direction LR
+        UserCLI[End User via CLI]
+        UserSDK[Developer via SDK]
     end
 
+    subgraph Client Layer - TypeScript/Node.js
+        direction TB
+        CLI["scripts/interactive.cjs <br> (uses packages/cli)"]
+        Framework["Framework Packages <br> (packages/framework, /core, /wallets, etc.)"]
+        PyWrapper["Python Wrapper <br> (packages/python-wrapper)"]
+        JSBridge["JS Bridge Client <br> (packages/julia-bridge)"]
 
-    %% Styling
-    classDef mainFlow fill:#f9f,stroke:#333,stroke-width:2px;
-    class User,CLI,Framework,JSBridge,JuliaServer,JuliaBridge,JuliaModules mainFlow;
+        CLI --> Framework
+        UserSDK --> Framework
+        UserSDK --> PyWrapper
+        Framework --> JSBridge
+        PyWrapper --> JSBridge
+    end
 
-    classDef clientSide fill:#d4f4fa,stroke:#333,stroke-width:1px;
-    classDef serverSide fill:#fad4d4,stroke:#333,stroke-width:1px;
+    subgraph Communication Layer
+        direction TB
+        BridgeComms["WebSocket/HTTP <br> (Port 8052)"]
+    end
 
-    class CLI,Framework,JSBridge clientSide;
-    class JuliaServer,JuliaBridge,JuliaModules,ServerScripts serverSide;
+    subgraph Server Layer - Julia Backend
+        direction TB
+        JuliaServer["Julia Server <br> (julia_server.jl)"]
+        JuliaBridge["Julia Bridge Server <br> (src/Bridge.jl)"]
+        
+        subgraph Core Modules - julia/src
+            AgentSys["AgentSystem.jl"]
+            Swarms["Swarms.jl <br> (DE, PSO, GWO, ACO, GA, WOA)"]
+            SwarmMgr["SwarmManager.jl"]
+            Blockchain["Blockchain.jl (EVM)"]
+            DEX["DEX.jl (Uniswap V3)"]
+            Web3Store["Web3Storage.jl <br> (Ceramic, IPFS)"]
+            OpenAIAdapter["OpenAISwarmAdapter.jl"]
+            SecurityMgr["SecurityManager.jl"]
+            UserModules["UserModules.jl"]
+        end
+
+        JuliaServer -- receives --> JuliaBridge
+        JuliaBridge -- dispatches to --> AgentSys
+        JuliaBridge -- dispatches to --> Swarms
+        JuliaBridge -- dispatches to --> SwarmMgr
+        JuliaBridge -- dispatches to --> Blockchain
+        JuliaBridge -- dispatches to --> DEX
+        JuliaBridge -- dispatches to --> Web3Store
+        JuliaBridge -- dispatches to --> OpenAIAdapter
+        SwarmMgr --> DEX
+        SwarmMgr --> Blockchain
+    end
+
+    subgraph External Services
+        direction TB
+        RPC["Blockchain RPC Nodes <br> (e.g., Infura, Alchemy)"]
+        W3S["Web3.Storage API <br> (IPFS Pinning)"]
+        Ceramic["Ceramic Network Node"]
+        OpenAI["OpenAI API"]
+    end
+
+    UserCLI --> CLI
+
+    JSBridge -- "sends/receives" --> BridgeComms
+    BridgeComms -- "sends/receives" --> JuliaServer
+
+    Blockchain -- interacts with --> RPC
+    Web3Store -- interacts with --> W3S
+    Web3Store -- interacts with --> Ceramic
+    OpenAIAdapter -- interacts with --> OpenAI
+
+    classDef client fill:#d4f4fa,stroke:#333,stroke-width:1px;
+    classDef server fill:#fad4d4,stroke:#333,stroke-width:1px;
+    classDef external fill:#lightgrey,stroke:#333,stroke-width:1px;
+    class CLI,Framework,PyWrapper,JSBridge client;
+    class JuliaServer,JuliaBridge,AgentSys,Swarms,SwarmMgr,Blockchain,DEX,Web3Store,OpenAIAdapter,SecurityMgr,UserModules server;
+    class RPC,W3S,Ceramic,OpenAI external;
 ```
 
 **Architecture Notes:** The JuliaOS framework follows a client-server architecture. The Julia backend (`julia/julia_server.jl`) runs as a WebSocket/HTTP server (default port 8052), handling core computations. TypeScript/JavaScript clients, primarily the interactive CLI (`scripts/interactive.cjs`), connect to this server. The CLI utilizes framework packages (`packages/framework`, `packages/core`, etc.) which in turn use the `packages/julia-bridge` to communicate with the backend's `julia/src/Bridge.jl` and server. Computation (swarms, blockchain logic, AI calls) happens in the Julia modules (`julia/src/*`), which may interact with external services (RPC nodes, Web3.Storage, OpenAI).
