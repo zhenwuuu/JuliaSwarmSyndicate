@@ -162,9 +162,9 @@ $RECYCLE.BIN/
 *.jl.*.cov
 *.jl.mem
 /julia/deps/deps.jl
-/julia/Manifest.toml
+# /julia/Manifest.toml # Keep Julia's main Manifest tracked
 # Don't ignore Project.toml files
-**/Manifest.toml
+# **/Manifest.toml # Removing this line to track Manifests
 /julia/artifacts/
 /julia/compiled/
 /julia/logs/
