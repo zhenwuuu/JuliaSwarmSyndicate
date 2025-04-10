@@ -12,96 +12,149 @@
 
 JuliaOS is a comprehensive framework for building decentralized applications (DApps) with a focus on agent-based architectures, swarm intelligence, and cross-chain trading. It provides both a CLI interface for quick deployment and a framework API for custom implementations. By leveraging AI-powered agents and swarm optimization, JuliaOS enables sophisticated trading strategies across multiple blockchains.
 
+```mermaid
+graph TD
+    subgraph User Interaction
+        direction LR
+        UserCLI[End User via CLI]
+        UserSDK[Developer via SDK]
+    end
+
+    subgraph Client Layer (TypeScript/Node.js)
+        direction TB
+        CLI["scripts/interactive.cjs <br> (uses packages/cli)"]
+        Framework["Framework Packages <br> (packages/framework, /core, /wallets, etc.)"]
+        PyWrapper["Python Wrapper <br> (packages/python-wrapper)"]
+        JSBridge["JS Bridge Client <br> (packages/julia-bridge)"]
+
+        CLI --> Framework
+        UserSDK --> Framework
+        UserSDK --> PyWrapper
+        Framework --> JSBridge
+        PyWrapper --> JSBridge # Assuming Python wrapper also uses the bridge
+    end
+
+    subgraph Communication Layer
+        direction TB
+        BridgeComms["WebSocket/HTTP <br> (Port 8052)"]
+    end
+
+    subgraph Server Layer (Julia Backend - julia/)
+        direction TB
+        JuliaServer["Julia Server <br> (julia_server.jl)"]
+        JuliaBridge["Julia Bridge Server <br> (src/Bridge.jl)"]
+        
+        subgraph Core Modules (julia/src/)
+            AgentSys["AgentSystem.jl"]
+            Swarms["Swarms.jl <br> (DE, PSO, GWO, ACO, GA, WOA)"]
+            SwarmMgr["SwarmManager.jl"]
+            Blockchain["Blockchain.jl (EVM)"]
+            DEX["DEX.jl (Uniswap V3)"]
+            Web3Store["Web3Storage.jl <br> (Ceramic, IPFS)"]
+            OpenAIAdapter["OpenAISwarmAdapter.jl"]
+            SecurityMgr["SecurityManager.jl"]
+            UserModules["UserModules.jl"]
+        end
+
+        JuliaServer -- receives --> JuliaBridge
+        JuliaBridge -- dispatches to --> AgentSys
+        JuliaBridge -- dispatches to --> Swarms
+        JuliaBridge -- dispatches to --> SwarmMgr
+        JuliaBridge -- dispatches to --> Blockchain
+        JuliaBridge -- dispatches to --> DEX
+        JuliaBridge -- dispatches to --> Web3Store
+        JuliaBridge -- dispatches to --> OpenAIAdapter
+        SwarmMgr --> DEX
+        SwarmMgr --> Blockchain
+    end
+
+    subgraph External Services
+        direction TB
+        RPC["Blockchain RPC Nodes <br> (e.g., Infura, Alchemy)"]
+        W3S["Web3.Storage API <br> (IPFS Pinning)"]
+        Ceramic["Ceramic Network Node"]
+        OpenAI["OpenAI API"]
+    end
+
+    UserCLI --> CLI
+
+    JSBridge -- "sends/receives" --> BridgeComms
+    BridgeComms -- "sends/receives" --> JuliaServer
+
+    Blockchain -- interacts with --> RPC
+    Web3Store -- interacts with --> W3S
+    Web3Store -- interacts with --> Ceramic
+    OpenAIAdapter -- interacts with --> OpenAI
+
+    classDef client fill:#d4f4fa,stroke:#333,stroke-width:1px;
+    classDef server fill:#fad4d4,stroke:#333,stroke-width:1px;
+    classDef external fill:#lightgrey,stroke:#333,stroke-width:1px;
+    class CLI,Framework,PyWrapper,JSBridge client;
+    class JuliaServer,JuliaBridge,AgentSys,Swarms,SwarmMgr,Blockchain,DEX,Web3Store,OpenAIAdapter,SecurityMgr,UserModules server;
+    class RPC,W3S,Ceramic,OpenAI external;
+```
+
 ## Features
 
 ### Core Features
-- ⚡ Agent-based architecture
-- 🧬 Swarm intelligence capabilities
-- ⛓️ Full multi-chain support with bridges connecting Solana, Ethereum, Polygon, Arbitrum, Base and other major chains
-- 📡 Advanced trading capabilities
-- 🔐 Built-in security features
-- 📊 Performance monitoring
-- 🖥️ Extensive CLI tools
-- 📘 Comprehensive documentation
-- 🌐 Multi-wallet support (MetaMask, Phantom, Rabby)
-- 🛰️ Chainlink price feeds integration
-- 🌉 AI-optimized cross-chain bridging
-- 🔗 LangChain integration for enhanced AI capabilities
-- ⚙️ Production-ready for testnet use; mainnet deployment with standard security precautions recommended
-- 🗄️ Modular Julia framework with dedicated components
+- ⚡ Agent-based architecture (Julia backend)
+- 🧬 Swarm intelligence capabilities (Julia backend, multiple algorithm structures implemented)
+- ⛓️ EVM blockchain support (Ethereum interaction confirmed, planning support for Solana, Polygon, Arbitrum, Base)
+- 📡 Core trading functionality (DEX quoting/encoding via Julia backend)
+- 🔐 Basic security infrastructure (`SecurityManager.jl` exists)
+- 📊 Basic monitoring and logging (standard output, file logs)
+- 🖥️ Interactive CLI (`scripts/interactive.cjs`)
+- 📘 Project documentation (READMEs, `julia/docs`)
+- 🌐 Wallet integration (EVM Private Key signing confirmed, planning browser wallet support - MetaMask, Phantom, Rabby)
+- 🔗 LangChain integration (Planned, Python wrapper setup exists)
+- 🐍 Python Wrapper (`packages/python-wrapper`) available
+- 💾 Web3 Storage (Ceramic, IPFS via `Web3Storage.jl`; Arweave package exists)
+- ⚙️ Usable on testnets; mainnet deployment requires caution & further testing.
+- 🗄️ Modular Julia framework and TypeScript package structure
 
-### Trading Components
-- **Market Data Service**: Real-time price and liquidity tracking across chains
-- **Position Management**: Cross-chain position tracking and management
-- **Risk Management**: Chain-specific and cross-chain risk controls
-- **Execution System**: Optimized execution across multiple DEXes
-- **Monitoring System**: Comprehensive cross-chain analytics
-- **Bridge Router**: AI-optimized asset routing between chains
+### Trading Components (Current & Planned)
+- **DEX Interaction**: Uniswap V3 quoting (`get_swap_quote`) and swap encoding (`encode_swap_data`) implemented. Unsigned transaction preparation for EVM chains. (Planning: execution, wider DEX support, advanced routing).
+- **Swarm Management**: Initiation of trades via `SwarmManager.jl`. (Planning: advanced coordination, multi-objective optimization, specific trading strategies).
+- **Blockchain Interface**: EVM connection, balance checks, nonce/gas fetching, tx submission. (Planning: broader chain support, cross-chain state management).
+- **Market Data Service**: (Planned: Real-time price/liquidity tracking)
+- **Position Management**: (Planned: Cross-chain position tracking)
+- **Risk Management**: (Planned: Chain-specific and cross-chain risk controls)
+- **Monitoring System**: (Planned: Comprehensive cross-chain analytics)
 
 ### Security Components
-- **SecurityManager**: Core security infrastructure with emergency response capabilities
-- **Cross-Chain Security**: Bridge authentication and encrypted communications
-- **Risk Assessment**: Real-time transaction and smart contract risk evaluation
-- **Anomaly Detection**: ML-powered monitoring for suspicious activity
-- **Emergency Response**: Automated incident response and circuit breakers
-- **User-Extensible Security**: Custom security modules via the UserModules system
+- **SecurityManager**: Core module exists (`SecurityManager.jl`). (Planned: Specific features like advanced authentication, risk assessment, anomaly detection, incident response).
+- **User-Extensible Security**: Structure exists via `UserModules.jl`.
 
 ### Agent System
-- **Solana-First Strategy**: Prioritized execution on Solana
-- **Multiple Trading Strategies**: Choose your own
-- **Cross-Chain Arbitrage**: Opportunities across chains
-- **Julia-Powered Agents**: High-performance agent system implemented in Julia
+- **Julia-Powered Agents**: Core agent system implemented in `AgentSystem.jl`. (Planning: Specific strategies like cross-chain arbitrage, Solana-first execution).
 
 ### Swarm Intelligence
-- **Multiple Algorithms**:
-  - **DE (Differential Evolution)**: Powerful for portfolio optimization and trading strategy development
-  - **PSO (Particle Swarm Optimization)**: Excellent for fast convergence in dynamic markets
-  - **GWO (Grey Wolf Optimizer)**: Adapts well to changing market regimes with hierarchical leadership
-  - **ACO (Ant Colony Optimization)**: Optimizes path-dependent strategies and order execution
-  - **GA (Genetic Algorithm)**: Discovers novel trading rule combinations through evolutionary processes
-  - **WOA (Whale Optimization Algorithm)**: Handles market volatility with bubble-net hunting strategy
-- **Dynamic Coordination**: Real-time agent coordination using swarm intelligence
-- **Adaptable Parameters**: Configurable swarm parameters for different market conditions
-- **Visualization Tools**: Swarm behavior and performance tracking
-- **Multi-objective Optimization**: Balance risk, return, and other objectives simultaneously
-- **Constraint Handling**: Enforce trading constraints and risk limits
+- **Multiple Algorithms**: Structures for DE, PSO, GWO, ACO, GA, WOA implemented in `Swarms.jl` and submodules.
+- (Planning: Advanced features like dynamic coordination, multi-objective optimization, constraint handling, adaptive parameters, visualization tools).
 
 ### Wallet Integrations
-- **Browser Wallets**: MetaMask, Phantom, Rabby
-- **Key Management**: Secure private key storage and encryption
-- **Multi-Chain Support**: Single interface for all supported chains
-- **CLI Configuration**: Easy wallet setup via CLI
+- **EVM Private Key**: Signing and transaction sending via `PrivateKeyProvider` in `WalletManager.ts`.
+- **CLI Configuration**: Basic wallet setup possible via CLI environment variables.
+- (Planning: Browser wallet integration - MetaMask, Phantom, Rabby).
 
 ### Price Feed Integrations
-- **Chainlink Oracles**: Primary source for accurate price data
-- **On-chain DEX Prices**: Backup price sources from major DEXes
-- **Aggregated Pricing**: Confidence-weighted data from multiple sources
-- **Configurable Sources**: Customizable price feed priorities
+- **On-chain DEX Prices**: Used implicitly for quoting.
+- (Planning: Chainlink integration, aggregated pricing, configurable sources).
 
 ### CLI Features
-- **Cross-Chain Support**: Trade across multiple blockchain networks
-- **AI-Powered Agents**: Intelligent trading agents with customizable strategies
-- **Swarm Intelligence**: Coordinated trading through agent swarms
-- **Wallet Integration**: Support for multiple wallet types
-- **Security**: Built-in security measures and best practices
-- **Monitoring**: Comprehensive monitoring and logging capabilities
-- **Interactive Mode**: Enhanced CLI with interactive menus and visualizations
-
-### Trading Strategies
-- **Arbitrage**: Cross-chain price arbitrage
-- **Market Making**: Automated market making
-- **Yield Farming**: Optimized yield farming across chains
-- **Custom Strategies**: Extensible strategy framework
+- **EVM Chain Support**: Interaction with Ethereum/EVM chains.
+- **Agent/Swarm Management**: Basic creation/management via interactive CLI.
+- **AI Integration**: OpenAI interaction via CLI (requires debugging/enhancement per `PROJECT_CONTEXT.md`).
+- **Wallet Integration**: Connection using private keys.
+- **Interactive Mode**: Menu-driven interface (`scripts/interactive.cjs`).
+- (Planning: Full cross-chain support, enhanced monitoring output, improved AI integration).
 
 ### Technical Features
-- **TypeScript/Node.js**: Modern, type-safe implementation
-- **Julia Integration**: High-performance trading logic
-- **LangChain Integration**: Enhanced AI capabilities with LangChain
-- **Python Wrapper**: Python interface for JuliaOS functionality
-- **Prometheus Metrics**: Detailed performance monitoring
-- **Elasticsearch Logging**: Advanced log aggregation
-- **Health Checks**: System and network monitoring
-- **Alert System**: Customizable alerts and notifications
+- **TypeScript/Node.js**: Frontend CLI and framework wrappers.
+- **Julia Integration**: High-performance backend logic via `julia_server.jl`.
+- **Python Wrapper**: Interface for Python users (`packages/python-wrapper`).
+- **Web3 Storage**: Ceramic/IPFS integration via `Web3Storage.jl`.
+- (Planned: LangChain integration, Prometheus metrics, Elasticsearch logging, Health checks, Alert system).
 
 ## Security and GitHub Preparation
 
@@ -156,72 +209,78 @@ The `.gitignore` file is configured to exclude sensitive files including:
 Before you begin, ensure you have the following installed:
 
 #### Required Dependencies
-- [Node.js](https://nodejs.org/) (v16 or later)
-- [npm](https://www.npmjs.com/) (v7 or later)
-- [Julia](https://julialang.org/downloads/) (v1.8 or later)
+- [Node.js](https://nodejs.org/) (v18 or later recommended)
+- [npm](https://www.npmjs.com/) (v7 or later, comes with Node.js)
+- [Julia](https://julialang.org/downloads/) (v1.8 or later, 1.10 recommended)
 
-#### Optional Dependencies
-- [Docker](https://www.docker.com/get-started) for containerized execution (optional, see Docker section below)
+Make sure both `node` and `julia` commands are available in your system's PATH.
 
-### API Keys Setup (Optional)
+### Installation and Setup
 
-For enhanced functionality, you can set up API keys:
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/Juliaoscode/JuliaOS.git
+    cd JuliaOS
+    ```
 
-1. Copy the example .env file:
+2.  **Install Node.js Dependencies:**
+    This installs dependencies for the CLI, framework packages, bridge, etc.
+    ```bash
+    npm install
+    ```
+    *Troubleshooting: If you encounter errors, ensure you have Node.js v18+ and npm v7+. Deleting `node_modules` and `package-lock.json` before running `npm install` might help.*
+
+3.  **Install Julia Dependencies:**
+    This installs the necessary Julia packages for the backend server.
+    ```bash
+    # Navigate to the julia directory
+    cd julia
+
+    # Activate the Julia environment and install packages
+    # This might take some time on the first run as it downloads and precompiles packages
+    julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+
+    # Navigate back to the root directory
+    cd ..
+    ```
+    *Troubleshooting: Ensure Julia is installed and in your PATH. If `Pkg.instantiate()` fails, check your internet connection and Julia version compatibility (1.8+). Sometimes running `julia -e 'using Pkg; Pkg.update()'` inside the `julia` directory before `instantiate` can resolve issues.*
+
+4.  **Set Up Environment Variables (Optional but Recommended):**
+    Copy the example environment file and add your API keys/RPC URLs for full functionality.
+    ```bash
+    # Copy the root .env.example (contains keys for Julia backend, Python wrapper tests etc.)
+    cp .env.example .env
+    nano .env # Add your keys (OpenAI, RPC URLs etc.)
+
+    # Optionally copy the CLI-specific example if needed (may overlap with root .env)
+    # cp packages/cli/.env.example packages/cli/.env
+    # nano packages/cli/.env # Add keys if different from root .env
+    ```
+    *Note: The specific keys needed depend on the features you intend to use (e.g., OpenAI key for AI features, RPC URLs for specific blockchain interactions).* Without relevant keys, certain functionalities might be limited or use mock data.
+
+### Running JuliaOS
+
+You need two separate terminals: one for the Julia backend server and one for the Node.js interactive CLI.
+
+**Terminal 1: Start the Julia Server**
 ```bash
-cp cli/.env.example cli/.env
-```
-
-2. Edit the `.env` file and add your API keys:
-- OpenAI API key for GPT models
-- Anthropic API key for Claude models
-- Blockchain provider RPC URLs
-- Exchange API keys (if needed)
-
-Without API keys, the CLI will still function but will use simulated responses instead of real AI services.
-
-### CLI Installation
-
-The JuliaOS CLI provides a command-line interface for creating and managing AI-powered trading agents and swarms.
-
-#### First-time Setup
-
-When using JuliaOS for the first time, you need to install the required Julia packages:
-
-```bash
-# Clone this repository
-git clone https://github.com/Juliaoscode/JuliaOS.git
-cd JuliaOS
-
-# Install Node.js dependencies
-npm install
-
-# Install Julia dependencies
-julia -e 'using Pkg; Pkg.activate("julia"); Pkg.instantiate()'
-```
-
-#### Using the Interactive CLI
-
-Our interactive CLI is the recommended way to interact with JuliaOS, providing a user-friendly interface with menus and visualizations:
-
-```bash
-# Start the Julia server (in a separate terminal)
+# Navigate to the server script directory
 cd scripts/server
-./run-server.sh
 
-# In another terminal, run the interactive CLI
+# Run the server script
+./run-server.sh
+```
+*This script changes to the `julia/` directory and executes `julia julia_server.jl`. Wait until you see messages indicating the server has started (e.g., listening on a port).*
+
+**Terminal 2: Run the Interactive CLI**
+```bash
+# Ensure you are in the project root directory (JuliaOS)
+# If not, cd back to it, e.g., cd ../.. from scripts/server
+
+# Run the interactive CLI script
 node scripts/interactive.cjs
 ```
-
-You can also use the script with various options:
-
-```bash
-# Run interactive CLI with custom config
-node scripts/interactive.cjs --config ./my-config.json
-
-# Get help on available options
-node scripts/interactive.cjs --help
-```
+*You should now see the JuliaOS CLI menu.*
 
 ### Using Docker (Experimental)
 
@@ -308,53 +367,54 @@ For more detailed examples and use cases, refer to the examples in each package'
 graph TB
     %% Main user flow
     User(["User"]) --> |"interacts with"| CLI["CLI (scripts/interactive.cjs)"]
-    CLI --> |"calls"| JuliaBridge["Julia Bridge"]
-    JuliaBridge --> |"WebSocket (port 8052)"| SimpleServer["julia/julia_server.jl"]
-    SimpleServer --> |"executes"| JuliaModules["Julia Backend Modules"]
+    CLI --> |"uses"| Framework["Framework (packages/framework, core, etc.)"]
+    Framework --> |"calls"| JSBridge["JS Bridge (packages/julia-bridge)"]
+    JSBridge --> |"WebSocket/HTTP (port 8052)"| JuliaServer["Julia Server (julia/julia_server.jl)"]
+    JuliaServer --> |"dispatches via"| JuliaBridge["Julia Bridge (julia/src/Bridge.jl)"]
+    JuliaBridge --> |"executes"| JuliaModules["Julia Modules (julia/src/*)"]
 
     subgraph "JuliaOS Framework"
         subgraph "Client Side (TypeScript/JavaScript)"
             CLI
-            JuliaBridge
-            CorePackages["Core Packages (packages/)"]
+            Framework
+            JSBridge
         end
 
         subgraph "Server Side (Julia)"
-            SimpleServer
+            JuliaServer
+            JuliaBridge
             JuliaModules
             ServerScripts["Server Scripts (scripts/server/)"]
         end
 
-        subgraph "Cross-Chain Infrastructure"
-            BridgeRelay["Bridge Relay Service"]
-            Bridges["Blockchain Bridges"]
-            Contracts["Smart Contracts"]
+        subgraph "External Interactions"
+           BlockchainRPC["Blockchain RPC"]
+           Web3StorageAPI["Web3 Storage API"]
+           OpenAI_API["OpenAI API"]
         end
 
         %% Internal connections
-        CorePackages --> JuliaBridge
-        CLI --> CorePackages
-        ServerScripts --> SimpleServer
-        CorePackages --> BridgeRelay
-        BridgeRelay --> Bridges
-        Bridges --> Contracts
+        CLI -- uses --> Framework
+        Framework -- calls --> JSBridge
+        JuliaModules -- interacts with --> BlockchainRPC
+        JuliaModules -- interacts with --> Web3StorageAPI
+        JuliaModules -- interacts with --> OpenAI_API
+
     end
 
-    %% External connection
-    Contracts <--> |"interact with"| Blockchains(["External Blockchains"])
 
     %% Styling
     classDef mainFlow fill:#f9f,stroke:#333,stroke-width:2px;
-    class User,CLI,JuliaBridge,SimpleServer,JuliaModules mainFlow;
+    class User,CLI,Framework,JSBridge,JuliaServer,JuliaBridge,JuliaModules mainFlow;
 
     classDef clientSide fill:#d4f4fa,stroke:#333,stroke-width:1px;
     classDef serverSide fill:#fad4d4,stroke:#333,stroke-width:1px;
 
-    class CLI,JuliaBridge,CorePackages clientSide;
-    class SimpleServer,JuliaModules,ServerScripts serverSide;
+    class CLI,Framework,JSBridge clientSide;
+    class JuliaServer,JuliaBridge,JuliaModules,ServerScripts serverSide;
 ```
 
-**Architecture Notes:** The JuliaOS framework follows a client-server architecture. The Julia backend runs as a WebSocket/HTTP server on port 8052 (julia/julia_server.jl), while TypeScript/JavaScript clients connect to this server via WebSocket. The interactive CLI (scripts/interactive.cjs) serves as the primary user interface, communicating with the Julia backend through the Julia Bridge package. Server scripts in the scripts/server directory provide utilities for starting and managing the Julia server. All computational intelligence is performed server-side in the Julia modules, with results returned to the clients.
+**Architecture Notes:** The JuliaOS framework follows a client-server architecture. The Julia backend (`julia/julia_server.jl`) runs as a WebSocket/HTTP server (default port 8052), handling core computations. TypeScript/JavaScript clients, primarily the interactive CLI (`scripts/interactive.cjs`), connect to this server. The CLI utilizes framework packages (`packages/framework`, `packages/core`, etc.) which in turn use the `packages/julia-bridge` to communicate with the backend's `julia/src/Bridge.jl` and server. Computation (swarms, blockchain logic, AI calls) happens in the Julia modules (`julia/src/*`), which may interact with external services (RPC nodes, Web3.Storage, OpenAI).
 
 ## Architecture
 
@@ -363,80 +423,42 @@ JuliaOS follows a client-server architecture with the following key components:
 ```
 Root Directory
 ├── julia/                 # Core Julia backend server
-│   ├── src/               # Julia source code
-│   │   ├── JuliaOS.jl     # Main Julia module
-│   │   ├── AgentSystem.jl # Agent system implementation
-│   │   ├── SwarmManager.jl # Swarm management functionality
-│   │   └── ...            # Other Julia components
+│   ├── src/               # Julia source code (Modules: JuliaOS, AgentSystem, SwarmManager, Blockchain, DEX, Bridge, Web3Storage etc.)
 │   ├── julia_server.jl    # WebSocket/HTTP server (port 8052)
-│   ├── apps/              # Application-specific Julia code
-│   ├── examples/          # Example Julia implementations
-│   ├── test/              # Julia tests
-│   └── use_cases/         # Example use cases
+│   ├── Project.toml       # Julia dependencies
+│   └── ...                # tests, examples, docs etc.
 │
 ├── packages/              # TypeScript/JavaScript packages (monorepo)
-│   ├── framework/         # Julia-based framework modules
-│   │   ├── agents/        # Agent system interfaces for Julia backend
-│   │   ├── swarms/        # Swarm intelligence algorithm interfaces
-│   │   ├── blockchain/    # Blockchain interaction interfaces
-│   │   ├── bridge/        # Communication bridge interfaces
-│   │   ├── wallet/        # Wallet management interfaces
-│   │   └── utils/         # Utility functions
-│   ├── julia-bridge/      # WebSocket bridge to Julia backend
-│   ├── cli/               # Command-line interface
-│   ├── core/              # Framework core functionality
-│   ├── wallets/           # Wallet integrations (MetaMask, Phantom, Rabby)
-│   ├── agent-manager/     # High-level agent management
-│   ├── cross-chain-router/# Cross-chain routing functionality
-│   ├── protocols/         # Blockchain protocol implementations
-│   ├── bridges/           # Cross-chain bridge implementations
-│   └── ...                # Other TypeScript packages
+│   ├── framework/         # TS Interfaces/Wrappers for Julia backend modules (agents, swarms, blockchain etc.)
+│   ├── julia-bridge/      # TS WebSocket bridge client to Julia backend
+│   ├── cli/               # Node.js command-line interface package
+│   ├── core/              # Core TS framework functionality/base classes
+│   ├── wallets/           # Wallet integrations (MetaMask, Phantom, Rabby structures)
+│   ├── cross-chain-router/# Cross-chain routing logic (TS)
+│   ├── bridges/           # Cross-chain bridge implementations (TS wrappers/logic)
+│   └── ...                # Other TS packages (contracts, storage, protocols etc.)
 │
 ├── scripts/               # Utility scripts
-│   ├── interactive.cjs    # Main interactive CLI (connects to Julia server)
-│   ├── server/            # Server management scripts
-│   │   ├── run-server.sh  # Script to run the Julia server
-│   │   ├── setup_julia_bridge.sh # Script to set up Julia bridge
-│   │   ├── start-services.sh # Script to start all services
-│   │   └── start.sh       # Script to start the Julia server
-│   ├── test/              # Test scripts
-│   └── ...                # Other scripts
+│   ├── interactive.cjs    # Main interactive CLI entry point (Node.js)
+│   ├── server/            # Server management scripts (run-server.sh)
+│   └── ...                # Other scripts (testing, setup etc.)
 │
-├── data/                  # Runtime data storage
-│   ├── agents/            # Agent data storage
-│   └── ...                # Other data directories
-│
-└── contracts/             # Smart contract implementations
+├── .env                   # Local environment variables (API Keys, RPC URLs) - *Not committed*
+├── README.md              # This file
+└── ...                    # Config, Docker files, Gitignore etc.
 ```
 
 ### Key Architecture Points
 
-1. **Client-Server Model**: The system follows a client-server architecture:
-   - **Server**: Julia backend running as a WebSocket server on port 8052
-   - **Client**: TypeScript/JavaScript frontend and CLI that connect to the server
-
-2. **Julia Backend (`/julia`)**:
-   - Serves as the computational engine for the entire system
-   - Handles agent creation, management, and coordination
-   - Performs cross-chain operations and route optimization
-   - Manages swarm intelligence algorithms
-   - Exposes functionality via WebSocket/HTTP interface
-
-3. **TypeScript Frontend (`/packages`)**:
-   - Provides user interfaces and abstractions
-   - Communicates with the Julia backend via WebSocket
-   - Includes a CLI for user interactions
-   - Manages wallet connections and blockchain interactions
-
-4. **Framework Structure**:
-   - `/packages/framework/` provides Julia-based modules that interface with the Julia backend
-   - `/packages/julia-bridge/` handles communication between TypeScript and Julia
-   - Other packages build on these foundations to provide specific functionality
-
-5. **Communication Flow**:
-   ```
-   User → scripts/interactive.cjs → julia-bridge → julia/julia_server.jl → Julia Backend Modules
-   ```
+1.  **Client-Server Model**: Julia backend server (port 8052), TS/JS frontend/CLI client.
+2.  **Julia Backend (`/julia`)**: Computational engine (agents, swarms, blockchain, DEX, AI). Exposes API via WebSocket/HTTP.
+3.  **TypeScript Frontend (`/packages`, `/scripts`)**: User interface (CLI), framework wrappers, blockchain/wallet interaction (client-side), communication bridge client.
+4.  **Framework Structure (`/packages/framework`)**: Provides **TypeScript interfaces and wrappers** for developers to programmatically interact with the features exposed by the Julia backend via the bridge.
+5.  **Communication Bridge (`packages/julia-bridge`, `julia/src/Bridge.jl`)**: Handles request/response flow between TypeScript frontend and Julia backend.
+6.  **Communication Flow**:
+    ```
+    User -> CLI (scripts/interactive.cjs) -> Framework (packages/framework) -> JS Bridge (packages/julia-bridge) -> Network -> Julia Server/Bridge (julia/...) -> Julia Modules (julia/src/...)
+    ```
 
 For a detailed architecture overview, see the README files in each package:
 - [Framework README](./packages/framework/README.md)
@@ -453,149 +475,143 @@ For more examples, see the README files in each module:
 
 ## Framework Components
 
-### Core Framework
+### Core Framework (`@juliaos/core`)
 
-The core framework provides the foundation for building agents, implementing swarm intelligence, and interacting with blockchains:
+*(Note: The specific exports and usage may evolve. Verify against actual package source)*
+The core framework package likely provides foundational TypeScript classes and types.
 
 ```typescript
-import { BaseAgent, SwarmAgent, Skill } from '@juliaos/core';
-import { JuliaBridge } from '@juliaos/julia-bridge';
+// Example conceptual usage (Verify against actual @juliaos/core implementation)
+import { BaseAgent /* ... other potential exports */ } from '@juliaos/core';
+import { JuliaBridge } from '@juliaos/julia-bridge'; // Bridge is separate
 
-// Create an agent with swarm capabilities
-const agent = new SwarmAgent({
-  name: 'DeFiTradingAgent',
-  type: 'trading',
-  swarmConfig: {
-    size: 30,
-    communicationProtocol: 'gossip',
-    consensusThreshold: 0.7,
-    updateInterval: 5000
-  }
-});
-
-// Initialize and start the agent
-await agent.initialize();
-await agent.start();
+// Usage would involve framework wrappers that use the bridge
+// import { SwarmManager } from '@juliaos/framework'; // Hypothetical framework import
+// const swarmManager = new SwarmManager(juliaBridge);
+// const swarm = await swarmManager.createSwarm(/* config */);
 ```
 
 For more examples, see the [Core Framework Documentation](./packages/core/README.md).
 
-### Julia Framework
+### Julia Framework (`julia/src/`)
 
-The Julia-based framework provides high-performance modules for AI agents, swarm algorithms, blockchain integration, and more:
+The Julia backend provides high-performance modules. Direct usage examples below illustrate internal Julia logic, not direct user interaction from the CLI.
 
 ```julia
-using JuliaOS.Agents
+# Example internal Julia usage (conceptual)
+using JuliaOS.AgentSystem # Assuming AgentSystem module exists
 using JuliaOS.Swarms
 using JuliaOS.Blockchain
 
-# Create a trading agent
-agent = Agent(
+# Internal server logic might create agents like this:
+agent = AgentSystem.create_agent(
     name = "TradingAgent",
-    skills = ["market_analysis", "trade_execution"],
-    config = Dict(
-        "max_position_size" => 1000,
-        "risk_tolerance" => "medium"
-    )
+    type = "simple_trader",
+    config = Dict("risk_tolerance" => "low")
 )
 
-# Create a swarm with Particle Swarm Optimization
-swarm = Swarm(
-    name = "TradingSwarm",
-    algorithm = "PSO",
-    agents = [agent],
-    parameters = Dict(
-        "swarm_size" => 30,
-        "inertia_weight" => 0.7,
-        "cognitive_coefficient" => 1.5,
-        "social_coefficient" => 1.5
-    )
+# Internal server logic might create swarms like this:
+# (objective_func would be defined elsewhere)
+result = Swarms.run_optimization(
+     swarm_id, # obtained from Swarms.create_swarm
+     objective_func_id,
+     Dict("max_iterations" => 100)
 )
 
-# Start the swarm
-start!(swarm)
-
-# Connect to Ethereum network
-ethereum = connect(
-    network = "ethereum",
-    endpoint = "https://mainnet.infura.io/v3/YOUR_API_KEY"
-)
-
-# Check balance
-balance = getBalance("0x123...", ethereum)
+# Internal blockchain interaction
+blockchain_conn = Blockchain.connect("ethereum", "MAINNET_RPC_URL_FROM_ENV")
+balance = Blockchain.get_balance(blockchain_conn, "0x123...")
 println("ETH Balance: $balance")
 ```
 
-The Julia framework consists of the following modules:
+The Julia framework consists of modules within `julia/src/`, including:
+1. **AgentSystem**: Manages AI agents.
+2. **Swarms**: Implements swarm intelligence algorithms (DE, PSO, GWO, etc.).
+3. **Bridge**: Handles communication from the JS/TS bridge client.
+4. **Wallet**: Server-side wallet/signing logic (less used if client-side signing preferred).
+5. **Blockchain**: Interacts with blockchain networks (RPC calls).
+6. **DEX**: Handles DEX interactions (quoting, encoding).
+7. **Web3Storage**: Interacts with Ceramic/IPFS.
+8. **OpenAISwarmAdapter**: Interacts with OpenAI API.
+9. *(Others like SwarmManager, SecurityManager, Utils etc.)*
 
-1. **Agents Module**: Create, manage, and deploy AI agents with various capabilities.
-2. **Swarms Module**: Implement swarm intelligence algorithms for coordinated agent behavior.
-3. **Bridge Module**: Facilitate communication between Julia and client applications.
-4. **Wallet Module**: Manage blockchain wallet connections and operations.
-5. **Blockchain Module**: Interact with various blockchain networks and smart contracts.
-6. **Utils Module**: Common utilities for formatting, encoding/decoding, and more.
+For more on the Julia framework modules, see the code in `julia/src/`.
 
-For more on the Julia framework, see [Julia Framework Documentation](./packages/framework/README.md).
+### Julia Integration (`packages/julia-bridge`)
 
-### Julia Integration
-
-JuliaOS uses Julia for high-performance computing tasks, such as swarm optimization algorithms:
+The TypeScript frontend interacts with the Julia backend via the `julia-bridge` package.
 
 ```typescript
+// Example conceptual usage (Verify against actual julia-bridge implementation)
 import { JuliaBridge } from '@juliaos/julia-bridge';
 
-// Create and initialize the bridge
+// Create and initialize the bridge (connecting to ws://localhost:8052)
 const bridge = new JuliaBridge();
-await bridge.initialize();
+await bridge.initialize(); // Connects the WebSocket
 
-// Create a swarm for optimization
-const swarmId = await bridge.createSwarm({
-  size: 30,
-  algorithm: 'pso',
-  parameters: {
-    maxPositionSize: 1000,
-    stopLoss: 0.05,
-    takeProfit: 0.1
+// Send a request to create a swarm on the Julia backend
+const createResponse = await bridge.sendRequest({
+  command: 'create_swarm',
+  params: {
+    algorithm: 'PSO',
+    dimensions: 5,
+    bounds: [[0,1],[0,1],[0,1],[0,1],[0,1]],
+    parameters: { swarm_size: 20 }
   }
 });
 
-// Run optimization
-const result = await bridge.optimizeSwarm(swarmId, marketData);
+let swarmId: string | null = null;
+if (createResponse.success) {
+  swarmId = createResponse.swarm_id;
+  console.log(`Swarm created with ID: ${swarmId}`);
+
+  // Send a request to run optimization (assuming an objective function is registered)
+  // const optimResponse = await bridge.sendRequest({
+  //   command: 'run_optimization',
+  //   params: {
+  //     swarm_id: swarmId,
+  //     function_id: 'my_trading_objective',
+  //     parameters: { max_iterations: 100 }
+  //   }
+  // });
+  // console.log('Optimization started:', optimResponse);
+} else {
+  console.error('Failed to create swarm:', createResponse.error);
+}
+
 ```
 
 For more on Julia integration, see:
 - [Julia Bridge Documentation](./packages/julia-bridge/README.md)
-- [Julia Swarm Documentation](./packages/framework/swarms/README.md)
+- The code within `packages/julia-bridge/src/`
 
-### Cross-Chain Bridge System
+### Cross-Chain Bridge System (`packages/bridges`, `packages/cross-chain-router`)
 
-The cross-chain bridge system provides optimized routing for asset transfers between supported blockchains:
+*(Note: This functionality is largely planned/in development based on PROJECT_CONTEXT.md)*
+The cross-chain system aims to optimize asset transfers.
 
 ```typescript
-import { BridgeManager, RouteOptimizer } from '@juliaos/bridges';
+// Example future/conceptual usage (Verify against actual implementation when complete)
+// import { BridgeManager } from '@juliaos/cross-chain-router'; // Hypothetical import
 
-// Create a bridge manager instance
-const bridgeManager = new BridgeManager({
-  supportedChains: ['ethereum', 'polygon', 'solana', 'arbitrum', 'base'],
-  providers: ['wormhole', 'stargate', 'hop', 'connext'],
-  defaultStrategy: 'balanced'
-});
+// // Create a bridge manager instance
+// const bridgeManager = new BridgeManager(/* config with providers, chains */);
 
-// Calculate the optimal route
-const optimalRoute = await bridgeManager.calculateRoute({
-  source: 'ethereum',
-  destination: 'polygon',
-  token: 'USDC',
-  amount: '100',
-  strategy: 'lowest_fee' // 'lowest_fee', 'fastest', 'most_secure', 'balanced'
-});
+// // Calculate the optimal route (logic likely involves backend calls)
+// const optimalRoute = await bridgeManager.calculateRoute({
+//   sourceChain: 'ethereum',
+//   destinationChain: 'polygon',
+//   tokenSymbol: 'USDC',
+//   amount: '100',
+//   userPreferences: { strategy: 'lowest_fee' }
+// });
 
-// Execute the bridge transaction
-const result = await bridgeManager.executeBridge(optimalRoute, wallet);
-console.log(`Bridge transaction completed: ${result.transactionHash}`);
+// // Execute the bridge transaction (likely involves multiple steps, signing)
+// const result = await bridgeManager.executeBridge(optimalRoute, walletProvider);
+// console.log(`Bridge transaction sequence initiated: ${result.status}`);
 ```
 
-The framework's bridge system leverages Julia's optimization algorithms to find the most efficient path for your assets based on your preferences (lowest fee, fastest, most secure, or balanced). The bridge router supports complex multi-hop routes across different networks for optimal efficiency.
+The framework aims to leverage Julia's optimization algorithms for routing. Current implementation status needs verification.
 
 ## Development Guide
 

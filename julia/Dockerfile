@@ -1,32 +1,34 @@
-FROM julia:1.11
+FROM julia:1.10
 
 WORKDIR /app
 
-# Create directories for JuliaOSBridge
-RUN mkdir -p /app/packages/julia-bridge/src
+# Copy project definition files first for better layer caching
+COPY julia/Project.toml julia/Manifest.toml /app/
 
-# Copy Julia project files
-COPY . /app/
+# Activate environment and install dependencies
+RUN julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
 
-# Copy JuliaOSBridge files if they exist externally
-COPY ../packages/julia-bridge/Project.toml /app/packages/julia-bridge/Project.toml || true
-COPY ../packages/julia-bridge/src /app/packages/julia-bridge/src || true
+# Copy necessary source code
+# Avoid copying the entire project to keep image small
+COPY julia/src /app/src
+COPY julia/julia_server.jl /app/
+COPY julia/load_modules.jl /app/ # Assuming this is needed by julia_server.jl
+# If Bridge.jl needs specific setup beyond Pkg, copy it, otherwise rely on Pkg
+# COPY julia/bridge /app/bridge # If needed
 
-# Install required packages
-RUN julia -e 'import Pkg; Pkg.add(["HTTP", "WebSockets", "JSON", "LinearAlgebra", "Plots", "Distributions", "DataFrames", "StatsBase", "TimeSeries", "MarketData", "CSV", "MLJ"])'
+# If setup.jl is truly necessary and idempotent
+# COPY julia/setup.jl /app/
+# RUN julia setup.jl
 
-# Run setup script to properly set up JuliaOSBridge
-RUN julia setup.jl
+# Precompile packages for faster startup (optional, remove if causing issues)
+# RUN julia --project=. -e 'using Pkg; Pkg.precompile()'
 
-# Precompile packages
-RUN julia -e 'import Pkg; Pkg.precompile()'
-
-# Expose the WebSocket port
+# Expose the server port
 EXPOSE 8052
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8052/health || exit 1
+# Health check (adjust path if needed)
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+#  CMD curl -f http://localhost:8052/health || exit 1
 
-# Run the Julia server
-CMD ["julia", "start_server.jl"] 
+# Correct entrypoint to run the server
+CMD ["julia", "--project=.", "julia_server.jl"] 
