@@ -1,0 +1,16 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+always contextualize and index codebase.
+
+always make sure to get full context of the following directories: /julia, /packages, /routes, /scripts and root level files.
+
+always make sure to check if a module, file, directory or sub directory doesnt already exist before making one. Avoid duplicates.
+
+always update the @PROJECT_CONTEXT.md file when you make changes. So we can keep track of the project and have context for future new chats.
+
+always check [README.md](mdc:README.md) for project context, this is our open source github repo readme for end users that cvan view our public repository.
+
+Always remember how the project works: /julia is the backend code. Our users can use CLI or modular frameworks to create agents, swarms and all the other features.

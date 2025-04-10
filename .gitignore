@@ -420,3 +420,7 @@ GITHUB_PREPARATION.md
 # Any remaining environment files that might be missed
 **/*.env
 **/settings.json
+
+# Documentation Files (Ignore all .md except root README)
+**/*.md
+!/README.md
