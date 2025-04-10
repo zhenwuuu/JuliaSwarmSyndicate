@@ -31,7 +31,8 @@ graph TD
         UserSDK --> Framework
         UserSDK --> PyWrapper
         Framework --> JSBridge
-        PyWrapper --> JSBridge %% Assuming Python wrapper also uses the bridge
+        PyWrapper --> JSBridge
+        %% Assuming Python wrapper also uses the bridge
     end
 
     subgraph Communication Layer
