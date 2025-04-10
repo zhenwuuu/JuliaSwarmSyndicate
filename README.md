@@ -20,7 +20,7 @@ graph TD
         UserSDK[Developer via SDK]
     end
 
-    subgraph Client Layer (TypeScript/Node.js)
+    subgraph Client Layer [TypeScript/Node.js]
         direction TB
         CLI["scripts/interactive.cjs <br> (uses packages/cli)"]
         Framework["Framework Packages <br> (packages/framework, /core, /wallets, etc.)"]
