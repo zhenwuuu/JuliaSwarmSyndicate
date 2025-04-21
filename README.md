@@ -288,18 +288,41 @@ The `.gitignore` file is configured to exclude sensitive files including:
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+#### Option 1: Using Docker (Recommended)
 
-#### Required Dependencies
+The easiest way to get started with JuliaOS is using Docker, which eliminates the need to install dependencies separately:
+
+- [Docker](https://www.docker.com/products/docker-desktop/) (v20.10 or later recommended)
+- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0 or later, included with Docker Desktop)
+
+#### Option 2: Manual Installation
+
+If you prefer to install dependencies manually:
+
 - [Node.js](https://nodejs.org/) (v18 or later recommended)
 - [npm](https://www.npmjs.com/) (v7 or later, comes with Node.js)
 - [Julia](https://julialang.org/downloads/) (v1.10 or later recommended)
 - [Python](https://www.python.org/downloads/) (v3.8 or later, optional for Python wrapper)
-- [Docker](https://www.docker.com/products/docker-desktop/) (optional, for containerized deployment)
 
-Make sure `node`, `julia`, `python`, and `docker` commands are available in your system's PATH.
+Make sure `node`, `julia`, and `python` commands are available in your system's PATH.
 
 ### Installation and Setup
+
+#### Option 1: Quick Start with Docker (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/Juliaoscode/JuliaOS.git
+cd JuliaOS
+
+# Run JuliaOS using the quick start script
+chmod +x run-juliaos.sh
+./run-juliaos.sh
+```
+
+That's it! This will build and start JuliaOS in Docker containers. The CLI will automatically connect to the Julia server.
+
+#### Option 2: Manual Installation
 
 1.  **Clone the Repository:**
     ```bash
@@ -399,9 +422,34 @@ Make sure `node`, `julia`, `python`, and `docker` commands are available in your
 
 ### Running JuliaOS
 
-#### Option 1: Using the Simplified Startup Script (Recommended)
+#### Option 1: Using Docker (Recommended)
 
-We provide a simplified startup script that handles everything for you:
+The easiest way to run JuliaOS is using Docker:
+
+```bash
+# Quick start with a single command
+./run-juliaos.sh
+```
+
+Or for more control:
+
+```bash
+# Build the Docker images
+./scripts/run-docker.sh build
+
+# Start both server and CLI
+./scripts/run-docker.sh start
+
+# Or start them separately
+./scripts/run-docker.sh server
+./scripts/run-docker.sh cli
+```
+
+This approach packages all dependencies in Docker containers, making it easy to run on any system that supports Docker.
+
+#### Option 2: Using the Simplified Startup Script
+
+If you've installed the dependencies manually, we provide a simplified startup script that handles everything for you:
 
 ```bash
 # Make the script executable (first time only)
@@ -417,7 +465,7 @@ This script will:
 3. If the Julia server fails to start, it will start a mock server instead
 4. Launch the interactive CLI
 
-#### Option 2: Manual Setup (Two Terminals)
+#### Option 3: Manual Setup (Two Terminals)
 
 Alternatively, you can use the traditional two-terminal approach:
 
@@ -441,7 +489,7 @@ node packages/cli/interactive.cjs
 ```
 *You should now see the JuliaOS CLI menu with options for Agent Management, Swarm Intelligence, Blockchain Operations, and more.*
 
-#### Option 3: Using the Mock Server
+#### Option 4: Using the Mock Server
 
 If you're having trouble with the Julia server or just want to test the CLI functionality without Julia:
 
@@ -507,11 +555,11 @@ cd JuliaOS
 docker compose up --build
 ```
 
-This will build the Docker image and start the JuliaOS CLI in interactive mode. The CLI will automatically connect to the Julia server running in the same container.
+This will build the Docker image and start both the JuliaOS server and CLI. The CLI will automatically connect to the Julia server running in a separate container.
 
 #### Running with the Helper Script
 
-We also provide a helper script that offers more control:
+We provide a comprehensive helper script that offers more control:
 
 ```bash
 # Make the helper script executable
@@ -525,6 +573,15 @@ chmod +x scripts/run-docker.sh
 
 # In a new terminal, start the interactive CLI
 ./scripts/run-docker.sh cli
+
+# Or start both server and CLI together
+./scripts/run-docker.sh start
+
+# View logs
+./scripts/run-docker.sh logs
+
+# Stop all containers
+./scripts/run-docker.sh stop
 ```
 
 #### Advanced Docker Usage
@@ -563,13 +620,13 @@ BSC_RPC_URL=https://bsc-dataseed.binance.org
 BASE_RPC_URL=https://mainnet.base.org
 EOL
 
-# Run the server with your environment variables
-docker compose up -d juliaos-server
+# Run with your environment variables
+docker compose up
 ```
 
 #### Docker Communication Configuration
 
-The Docker setup has been enhanced to properly handle inter-container communication. The CLI container now correctly connects to the Julia server container using the service name as the hostname. This is configured through environment variables in the `docker-compose.yml` file:
+The Docker setup has been designed to properly handle inter-container communication. The CLI container connects to the Julia server container using the service name as the hostname. This is configured through environment variables in the `docker-compose.yml` file:
 
 ```yaml
 environment:
@@ -579,9 +636,15 @@ environment:
   - JULIA_SERVER_PORT=8052
 ```
 
-The entrypoint script in the Dockerfile has also been updated to handle these environment variables correctly, ensuring that the CLI can connect to the server regardless of whether they're running in separate containers or on the host machine.
+The Docker setup includes:
 
-> **Note**: The Docker setup works on any operating system that supports Docker (Windows, macOS, Linux) and eliminates the need to install Julia, Node.js, and Python separately.
+1. **Separate Containers**: The Julia server and CLI run in separate containers for better isolation and scalability.
+2. **Health Checks**: The server container includes health checks to ensure it's fully operational before the CLI connects.
+3. **Persistent Storage**: A Docker volume is used to persist data between container restarts.
+4. **Automatic Fallback**: If the Julia server fails to start, the system automatically falls back to the mock server.
+5. **Environment Configuration**: Easy configuration through environment variables and `.env` files.
+
+> **Note**: The Docker setup works on any operating system that supports Docker (Windows, macOS, Linux) and eliminates the need to install Julia, Node.js, and Python separately. This is the recommended way to run JuliaOS, especially for users who are not familiar with Julia or Node.js.
 
 ### Example: Creating and Running a Swarm Optimization
 
