@@ -2,6 +2,8 @@
 
 The JuliaOS Framework is a comprehensive suite of modules for building blockchain-powered AI agent and swarm applications. This framework provides the building blocks to create, manage, and deploy intelligent agents that can operate across multiple blockchain networks.
 
+The framework is available in both JavaScript and Julia implementations, allowing developers to choose the language that best fits their needs.
+
 ## Framework Modules
 
 The framework consists of the following modules:
@@ -193,6 +195,62 @@ const balances = await walletManager.getWalletBalance(wallet.address);
 // Send transaction (requires private key)
 await walletManager.sendTransaction(wallet.address, '0x...', 0.1, 'ETH');
 ```
+
+## Julia Implementation
+
+The JuliaOS Framework is also available as a native Julia package, providing the same functionality with the performance benefits of Julia.
+
+### Julia Installation
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/yourusername/JuliaOS.jl")
+```
+
+### Julia Quick Start
+
+```julia
+using JuliaOS
+
+# Connect to the JuliaOS backend
+JuliaOS.Bridge.connect()
+
+# Create a trading agent
+trading_config = JuliaOS.TradingAgent.TradingAgentConfig(
+    "My Trading Agent",
+    risk_level="medium",
+    trading_pairs=["ETH/USDC", "BTC/USDC"]
+)
+agent = JuliaOS.TradingAgent.createTradingAgent(trading_config)
+
+# Create a swarm
+swarm_config = JuliaOS.Swarms.SwarmConfig(
+    "My Swarm",
+    JuliaOS.Swarms.PSO(),
+    "minimize",
+    Dict("dimensions" => 10)
+)
+swarm = JuliaOS.Swarms.createSwarm(swarm_config)
+
+# Add the agent to the swarm
+JuliaOS.Swarms.addAgentToSwarm(swarm.id, agent.id)
+
+# Execute a task with the agent
+task = Dict{String, Any}(
+    "action" => "analyze_market",
+    "market" => "crypto",
+    "timeframe" => "1d"
+)
+result = JuliaOS.Agents.executeAgentTask(agent.id, task)
+```
+
+### Julia Specialized Agent Types
+
+The Julia implementation includes specialized agent types for specific use cases:
+
+- **TradingAgent**: Agents specialized in trading and financial operations
+- **ResearchAgent**: Agents specialized in research and data analysis
+- **DevAgent**: Agents specialized in software development
 
 ## Examples
 

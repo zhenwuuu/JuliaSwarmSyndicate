@@ -329,72 +329,48 @@ export class JuliaBridge extends EventEmitter {
   public async runJuliaCommand(command: string, params: any = {}): Promise<any> {
     this.checkInitialized();
 
-    if (this.config.useExistingServer) {
+    const commandId = uuidv4();
+    const commandData = {
+      id: commandId,
+      command,
+      params
+    };
+
+    if (this.config.useWebSocket && this.ws && this.wsConnected) {
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pendingCommands.delete(commandId);
+          reject(new Error(`Command timed out: ${command}`));
+        }, this.commandTimeout);
+
+        this.pendingCommands.set(commandId, { resolve, reject, timeout });
+        this.ws!.send(JSON.stringify(commandData));
+      });
+    } else {
+      // Fallback to HTTP if WebSocket is not available
       try {
-        // For HTTP API, make a POST request to the server
-        const url = this.config.apiUrl;
-
-        // Format the request to match the expected format in Julia server
-        // The server expects { command: string, params: any }
-        const requestBody = {
-          command: command,
-          params: params
-        };
-
-        this.log(`Sending API request to ${url}: ${JSON.stringify(requestBody)}`);
-
-        const response = await fetch(url, {
+        const response = await fetch(this.config.apiUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(commandData)
         });
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const responseData = await response.json();
-        this.log(`Received API response: ${JSON.stringify(responseData)}`);
-
-        return responseData;
-      } catch (error: any) {
-        this.log(`Error executing command via HTTP: ${error.message}`, true);
-        throw new Error(`Failed to execute command ${command}: ${error.message}`);
-      }
-    } else if (!this.wsConnected) {
-      throw new Error('WebSocket connection not established');
-    } else {
-      // Use WebSocket for command execution
-      return new Promise((resolve, reject) => {
-        try {
-          const id = uuidv4();
-
-          // Create the command
-          const commandPayload = {
-            id,
-            command,
-            params
-          };
-
-          // Set a timeout for the command
-          const timeout = setTimeout(() => {
-            this.pendingCommands.delete(id);
-            reject(new Error(`Command timed out: ${command}`));
-          }, this.commandTimeout);
-
-          // Add to pending commands
-          this.pendingCommands.set(id, { resolve, reject, timeout });
-
-          // Send the command
-          this.ws?.send(JSON.stringify(commandPayload));
-
-          this.log(`Sent command: ${command} (ID: ${id})`);
-        } catch (error: any) {
-          reject(error);
+        const result = await response.json() as { error?: string; data?: any };
+        if (result.error) {
+          throw new Error(result.error);
         }
-      });
+
+        return result.data;
+      } catch (error: any) {
+        this.log(`Error executing command ${command}: ${error.message}`, true);
+        throw error;
+      }
     }
   }
 
@@ -425,7 +401,7 @@ export class JuliaBridge extends EventEmitter {
   public async getHealth(): Promise<any> {
     if (this.config.useExistingServer) {
       try {
-        const response = await fetch(`http://localhost:${this.config.serverPort}/health`);
+        const response = await fetch(this.config.healthUrl);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -544,6 +520,34 @@ export class JuliaBridge extends EventEmitter {
       console.log(`[JuliaBridge:${prefix}] ${message}`);
     }
   }
+
+  // Add agent-related methods to JuliaBridge class
+  public agents = {
+    create_agent: async (config: any) => {
+      return this.runJuliaCommand('agents.create_agent', config);
+    },
+    list_agents: async (params: any = {}) => {
+      return this.runJuliaCommand('agents.list_agents', params);
+    },
+    get_agent: async (id: string) => {
+      return this.runJuliaCommand('agents.get_agent', { id });
+    },
+    update_agent: async (id: string, updates: any) => {
+      return this.runJuliaCommand('agents.update_agent', { id, ...updates });
+    },
+    delete_agent: async (id: string) => {
+      return this.runJuliaCommand('agents.delete_agent', { id });
+    },
+    start_agent: async (id: string) => {
+      return this.runJuliaCommand('agents.start_agent', { id });
+    },
+    stop_agent: async (id: string) => {
+      return this.runJuliaCommand('agents.stop_agent', { id });
+    },
+    get_metrics: async (id: string) => {
+      return this.runJuliaCommand('agents.get_metrics', { id });
+    }
+  };
 }
 
 export default JuliaBridge;

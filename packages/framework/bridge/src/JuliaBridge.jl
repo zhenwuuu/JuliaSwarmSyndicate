@@ -1,12 +1,16 @@
 module JuliaBridge
 
-export connect, disconnect, execute, isConnected, healthCheck, 
-       BridgeConfig, BridgeException, BridgeResponse
+export connect, disconnect, execute, isConnected, healthCheck,
+       BridgeConfig, BridgeException, BridgeResponse,
+       WormholeBridge
 
 using HTTP
 using JSON3
 using Sockets
 using Dates
+
+# Include Wormhole bridge module
+include("wormhole/WormholeBridge.jl")
 
 """
     BridgeConfig
@@ -26,11 +30,11 @@ struct BridgeConfig
     apiPath::String
     healthPath::String
     timeout::Int
-    
+
     BridgeConfig(;
-        host="localhost", 
-        port=8052, 
-        apiPath="/api/command", 
+        host="localhost",
+        port=8052,
+        apiPath="/api/command",
         healthPath="/health",
         timeout=30
     ) = new(host, port, apiPath, healthPath, timeout)
@@ -90,7 +94,7 @@ function connect(config::BridgeConfig=BridgeConfig())
     try
         # Store the configuration
         _state["config"] = config
-        
+
         # Check if the server is reachable with a health check
         result = healthCheck()
         if result.success
@@ -142,7 +146,7 @@ Check the health of the JuliaOS backend server.
 function healthCheck()
     config = _state["config"]
     url = "http://$(config.host):$(config.port)$(config.healthPath)"
-    
+
     try
         response = HTTP.get(url, connect_timeout=config.timeout)
         if response.status == 200
@@ -172,26 +176,26 @@ function execute(functionPath::String, params::Dict{String, Any}=Dict{String, An
     if !isConnected()
         throw(BridgeException("Not connected to JuliaOS backend", 1))
     end
-    
+
     config = _state["config"]
     url = "http://$(config.host):$(config.port)$(config.apiPath)"
-    
+
     # Prepare payload
     payload = Dict(
         "function" => functionPath,
         "params" => params,
         "timestamp" => string(now())
     )
-    
+
     try
         # Send request to the backend
         response = HTTP.post(
-            url, 
+            url,
             ["Content-Type" => "application/json"],
             JSON3.write(payload),
             connect_timeout=config.timeout
         )
-        
+
         if response.status == 200
             data = JSON3.read(String(response.body))
             if haskey(data, "error") && data.error !== nothing
@@ -201,9 +205,9 @@ function execute(functionPath::String, params::Dict{String, Any}=Dict{String, An
             end
         else
             return BridgeResponse(
-                false, 
-                nothing, 
-                "Request failed with status $(response.status)", 
+                false,
+                nothing,
+                "Request failed with status $(response.status)",
                 now()
             )
         end
@@ -212,4 +216,4 @@ function execute(functionPath::String, params::Dict{String, Any}=Dict{String, An
     end
 end
 
-end # module 
+end # module

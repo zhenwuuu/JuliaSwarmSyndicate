@@ -1,210 +1,160 @@
 module JuliaOS
 
-using JSON
-using Dates
-using Statistics
-using Random
-using HTTP
-using DataFrames
-using Distributions
-using LinearAlgebra
-using WebSockets
-using Plots
-using Logging
-using JuliaOSBridge
-using MarketData
-using TimeSeries
-using SQLite
+# Export public modules
+export initialize, API, Storage, Swarms, SwarmBase, Types
 
-# Abstract types for system components
-abstract type AbstractAgent end
-abstract type AbstractSwarm end
-abstract type AbstractStrategy end
-abstract type AbstractMarketData end
-abstract type AbstractBridge end
-abstract type SwarmBehavior end
+# Constants for feature detection
+const PYTHON_WRAPPER_EXISTS = isfile(joinpath(@__DIR__, "python/python_bridge.jl"))
+const FRAMEWORK_EXISTS = isdir(joinpath(dirname(dirname(@__DIR__)), "packages/framework"))
 
-# Include core system modules in dependency order
-include("Blockchain.jl")
-include("SecurityTypes.jl")
-include("DEX.jl")
-include("Storage.jl")
-include("Web3Storage.jl")
-include("Sync.jl")
-include("Bridge.jl")
-include("Wallet.jl")
-include("WalletIntegration.jl")
-include("WormholeBridge.jl")
-include("MarketData.jl")
-include("algorithms/Algorithms.jl")
-include("SwarmManager.jl")
-include("MLIntegration.jl")
-include("SmartContracts.jl")
-include("AgentSystem.jl")
-include("RiskManagement.jl")
-include("SecurityManager.jl")
-include("AdvancedSwarm.jl")
-include("SpecializedAgents.jl")
-include("CrossChainArbitrage.jl")
-include("UserModules.jl")
-include("OpenAISwarmAdapter.jl")
+# Core modules
+include("core/types/types.jl")
+include("core/utils/Errors.jl")
+include("../config/config.jl")
+include("core/logging/logging.jl")
+include("core/utils/Utils.jl")
+include("core/utils/Metrics.jl")
+include("core/utils/SecurityTypes.jl")
+include("core/utils/SecurityManager.jl")
+include("core/utils/MLIntegration.jl")
 
-# Export public components
-export Blockchain, SecurityTypes, Bridge, Wallet, WalletIntegration, WormholeBridge, SwarmManager, SecurityManager, AgentSystem, DEX, MarketData, MLIntegration, AdvancedSwarm, SpecializedAgents, CrossChainArbitrage, RiskManagement, UserModules, OpenAISwarmAdapter, Algorithms, Storage, Web3Storage, Sync
-
-# Initialize logging
-const logger = SimpleLogger(stderr, Logging.Info)
-global_logger(logger)
-
-# System configuration
-const CONFIG = Dict(
-    "max_agents" => 1000,
-    "default_swarm_size" => 100,
-    "update_interval" => 0.1,
-    "max_memory" => 1024 * 1024 * 1024,  # 1GB
-    "data_dir" => "data",
-    "log_dir" => "logs",
-    "supported_chains" => ["ethereum", "polygon", "arbitrum", "optimism", "base"],
-    "default_gas_limit" => 500000,
-    "max_slippage" => 0.01,  # 1%
-    "min_liquidity" => 10000.0,  # Minimum liquidity in USD
-    "price_feed_update_interval" => 1.0,  # seconds
-    "bridge_timeout" => 300,  # 5 minutes
-    "max_retries" => 3,
-    "health_check_interval" => 60,  # seconds
-    "security" => Dict(
-        "anomaly_detection_threshold" => 0.75,
-        "max_transaction_value" => 10.0,  # ETH or equivalent
-        "emergency_contacts" => ["security@yourproject.com"],
-        "monitoring_interval" => 60,  # seconds
-        "enable_hooks" => true
-    ),
-    "storage" => Dict(
-        "local_db_path" => joinpath(homedir(), ".juliaos", "juliaos.sqlite"),
-        "ceramic_node_url" => get(ENV, "CERAMIC_NODE_URL", "https://ceramic-clay.3boxlabs.com"),
-        "ipfs_api_url" => get(ENV, "IPFS_API_URL", "https://api.web3.storage"),
-        "ipfs_api_key" => get(ENV, "IPFS_API_KEY", ""),
-        "auto_sync_enabled" => false,
-        "auto_sync_interval" => 3600  # 1 hour in seconds
-    )
-)
-
-# Initialize system directories
-function initialize_system()
-    # Create necessary directories
-    for dir in [CONFIG["data_dir"], CONFIG["log_dir"]]
-        if !isdir(dir)
-            mkdir(dir)
-            @info "Created directory: $dir"
-        end
-    end
-
-    # Initialize logging
-    log_file = joinpath(CONFIG["log_dir"], "juliaos_$(Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")).log")
-    file_logger = SimpleLogger(open(log_file, "w"), Logging.Info)
-    global_logger(logger)
-
-    # Initialize storage
-    Storage.init_db()
-
-    # Configure Web3 storage if API key is available
-    if CONFIG["storage"]["ipfs_api_key"] != ""
-        Web3Storage.configure(
-            ceramic_node_url=CONFIG["storage"]["ceramic_node_url"],
-            ipfs_api_url_arg=CONFIG["storage"]["ipfs_api_url"],
-            ipfs_api_key_arg=CONFIG["storage"]["ipfs_api_key"]
-        )
-
-        # Initialize sync
-        Sync.init_sync()
-        if CONFIG["storage"]["auto_sync_enabled"]
-            Sync.enable_sync(true)
-            Sync.set_auto_sync_interval(CONFIG["storage"]["auto_sync_interval"])
-        end
-    end
-
-    # Load user modules
-    UserModules.load_user_modules()
-
-    @info "JuliaOS system initialized"
+# Use core modules
+# Only import these modules if they're not already defined
+if !isdefined(@__MODULE__, :Types)
+    using .Types
+end
+if !isdefined(@__MODULE__, :SecurityTypes)
+    using .SecurityTypes
+end
+if !isdefined(@__MODULE__, :Errors)
+    using .Errors
+end
+if !isdefined(@__MODULE__, :Metrics)
+    using .Metrics
+end
+if !isdefined(@__MODULE__, :SecurityManager)
+    using .SecurityManager
+end
+if !isdefined(@__MODULE__, :MLIntegration)
+    using .MLIntegration
+end
+# Config and Logging are not modules, they're just files with constants and functions
+if !isdefined(@__MODULE__, :Utils)
+    using .Utils
 end
 
-# System health check
-function check_system_health()
-    cpu_cores = Sys.cpu_info()
-    total_memory = Sys.total_memory() / (1024^3)  # Convert to GB
-    free_memory = Sys.free_memory() / (1024^3)    # Convert to GB
+# Storage implementations
+include("storage/Storage.jl")
 
-    bridge_status = try
-        Bridge.check_connections()
-    catch e
-        Dict("status" => "error", "error" => string(e))
-    end
+# Use storage module
+using .Storage
 
-    server_status = try
-        Server.get_status()
-    catch e
-        Dict("status" => "error", "error" => string(e))
-    end
+# Swarm base implementations (no dependencies)
+include("swarm/SwarmBase.jl")
 
-    storage_status = try
-        db_exists = isfile(CONFIG["storage"]["local_db_path"])
-        web3_configured = CONFIG["storage"]["ipfs_api_key"] != ""
-        sync_status = web3_configured ? Sync.get_sync_status() : Dict("sync_enabled" => false)
+# Use swarm base module
+using .SwarmBase
 
-        Dict(
-            "status" => "healthy",
-            "local_db" => db_exists ? "connected" : "not found",
-            "web3_storage" => web3_configured ? "configured" : "not configured",
-            "sync" => sync_status
-        )
-    catch e
-        Dict("status" => "error", "error" => string(e))
-    end
+# API and Server
+include("api/rest/server.jl")
+include("api/rest/routes.jl")
 
-    return Dict(
-        "status" => "healthy",
-        "timestamp" => now(),
-        "cpu" => Dict(
-            "cores" => length(cpu_cores),
-            "info" => string(cpu_cores[1])
-        ),
-        "memory" => Dict(
-            "total_gb" => total_memory,
-            "free_gb" => free_memory,
-            "used_percent" => (1 - free_memory/total_memory) * 100
-        ),
-        "bridge" => bridge_status,
-        "server" => server_status,
-        "storage" => storage_status,
-        "julia_version" => string(VERSION)
-    )
+# Now import the API module
+using .API
+
+# Blockchain functionality
+include("blockchain/Blockchain.jl")
+include("blockchain/chain_integration.jl")
+include("blockchain/Wallet.jl")
+include("blockchain/WalletIntegration.jl")
+include("blockchain/CrossChainBridge.jl")
+include("blockchain/CrossChainArbitrage.jl")
+include("blockchain/MultichainBridge.jl")
+
+# DEX implementations
+include("dex/dex_interface.jl")
+include("dex/market_data.jl")
+# Only include DEX.jl if it's not already defined
+if !isdefined(@__MODULE__, :DEX)
+    include("dex/DEX.jl")
 end
+include("dex/DEXCommands.jl")
 
-# Export public functions
-export initialize_system, check_system_health
+# Bridge implementations
+include("bridges/bridge_interface.jl")
+# Only include Bridge.jl if it's not already defined
+if !isdefined(@__MODULE__, :Bridge)
+    include("bridges/Bridge.jl")
+end
+include("bridges/WormholeBridge.jl")
+include("bridges/AxelarBridge.jl")
+include("bridges/LayerZeroBridge.jl")
+include("bridges/StargateBridge.jl")
+include("bridges/SynapseBridge.jl")
+include("bridges/HopBridge.jl")
+include("bridges/AcrossBridge.jl")
+include("bridges/bridge_commands.jl")
 
-# Module initialization
-function __init__()
-    @info "JuliaOS runtime initialization"
+# Agent implementations
+include("agents/Agents.jl")
+
+# Swarm implementations
+include("swarm/Swarms.jl")
+# include("swarm/AdvancedSwarm.jl") # Requires SwarmManager module
+# include("swarm/OpenAISwarmAdapter.jl") # Requires OpenAI module
+# Algorithm files
+include("swarm/algorithms/de.jl")
+include("swarm/algorithms/pso.jl")
+include("swarm/algorithms/aco.jl")
+include("swarm/algorithms/gwo.jl")
+include("swarm/algorithms/woa.jl")
+include("swarm/algorithms/ga.jl")
+include("swarm/algorithms/DEPSO.jl")
+
+# Use swarm modules
+using .Swarms
+
+# Include command handlers (after all modules are loaded)
+include("api/rest/handlers/CommandHandler.jl")
+include("api/rest/handlers/agent_commands.jl")
+include("api/rest/handlers/blockchain_commands.jl")
+include("api/rest/handlers/bridge_commands.jl")
+include("api/rest/handlers/dex_commands.jl")
+include("api/rest/handlers/storage_commands.jl")
+include("api/rest/handlers/swarm_commands.jl")
+include("api/rest/handlers/system_commands.jl")
+include("api/rest/handlers/algorithm_commands.jl")
+include("api/rest/handlers/metrics_commands.jl")
+include("api/rest/handlers/portfolio_commands.jl")
+include("api/rest/handlers/wallet_commands.jl")
+include("api/rest/handlers/wormhole_commands.jl")
+
+# Python integration
+include("bridges/PythonBridge.jl")
+
+# These modules are already imported above
+
+# Initialize function
+function initialize(; storage_path::String = joinpath(homedir(), ".juliaos", "juliaos.sqlite"))
+    @info "Initializing JuliaOS..."
 
     # Initialize core systems
+    # These modules might not have initialize functions
+    # Just log that we're initializing them
+
+    # Initialize Storage module
     try
-        AgentSystem.initialize()
-        @info "AgentSystem initialized."
+        Storage.initialize(provider_type=:local, config=Dict{String, Any}("db_path" => storage_path))
+        @info "Storage initialized at $storage_path"
     catch e
-        @error "Failed to initialize AgentSystem: $e" stacktrace(catch_backtrace())
+        @warn "Failed to initialize Storage: $e"
     end
 
-    try
-        SwarmManager.initialize()
-        @info "SwarmManager initialized."
-    catch e
-        @error "Failed to initialize SwarmManager: $e" stacktrace(catch_backtrace())
-    end
+    # Initialize Swarms module
+    # No explicit initialization needed for Swarms module
 
-    # Runtime initialization code
-    # (This runs after all modules are loaded but before any user code executes)
+    @info "JuliaOS initialized successfully"
+    return true
 end
 
 end # module

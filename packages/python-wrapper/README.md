@@ -1,6 +1,15 @@
 # JuliaOS Python Wrapper
 
-Python wrapper for the JuliaOS Framework, providing a Pythonic interface to interact with the Julia backend.
+This package provides a Python interface to JuliaOS, enabling Python developers to leverage JuliaOS's powerful swarm intelligence algorithms, agent systems, and blockchain integrations directly from Python code.
+
+## Features
+
+- Full access to JuliaOS functionality from Python
+- Integration with popular Python AI frameworks (LangChain, HuggingFace)
+- Async API for high-performance applications
+- Type hints for improved developer experience
+- Comprehensive examples and Jupyter notebooks
+- Advanced workflow support for complex agent behaviors
 
 ## Installation
 
@@ -8,346 +17,323 @@ Python wrapper for the JuliaOS Framework, providing a Pythonic interface to inte
 pip install juliaos
 ```
 
-## Features
+## Requirements
 
-- Agent management and execution
-- Swarm intelligence algorithms:
-  - Differential Evolution (DE)
-  - Particle Swarm Optimization (PSO)
-  - Grey Wolf Optimizer (GWO)
-  - Ant Colony Optimization (ACO)
-  - Genetic Algorithm (GA)
-  - Whale Optimization Algorithm (WOA)
-- Blockchain integration
-- Wallet management
-- Storage operations
-- LangChain integration
-- Multiple LLM providers (OpenAI, Anthropic, Llama, Mistral, Cohere, Gemini)
-- Google Agent Development Kit (ADK) integration
+- Python 3.8+
+- JuliaOS backend running locally or remotely
 
 ## Quick Start
 
-### Agent Management
-
 ```python
-import asyncio
 from juliaos import JuliaOS
 
-async def main():
-    # Initialize JuliaOS
-    juliaos = JuliaOS()
-    await juliaos.connect()
+# Initialize the client
+juliaos = JuliaOS()
 
-    # Create an agent
-    agent = await juliaos.agents.create_agent(
-        name="My Agent",
-        agent_type="TRADING",
-        config={
-            "parameters": {
-                "risk_tolerance": 0.5,
-                "max_position_size": 1000.0
-            }
-        }
+# Create a swarm
+swarm = juliaos.create_swarm(
+    algorithm="differential_evolution",
+    population_size=50,
+    dimensions=10,
+    bounds=(-10, 10)
+)
+
+# Define an objective function
+def sphere(x):
+    return sum(xi**2 for xi in x)
+
+# Run optimization
+result = swarm.optimize(
+    objective=sphere,
+    iterations=100,
+    minimize=True
+)
+
+print(f"Best solution: {result.best_solution}")
+print(f"Best fitness: {result.best_fitness}")
+```
+
+## Architecture
+
+The JuliaOS Python wrapper is designed as a bridge between Python and the JuliaOS backend:
+
+```mermaid
+graph TD
+    subgraph "Python Layer"
+        PythonApp[Python Application]
+        JuliaOSPy[JuliaOS Python Client]
+        AsyncAPI[Async API]
+        TypedAPI[Typed API]
+        Integrations[Framework Integrations]
+    end
+
+    subgraph "Bridge Layer"
+        Bridge[Python-Julia Bridge]
+        Serialization[Data Serialization]
+        ErrorHandling[Error Handling]
+    end
+
+    subgraph "JuliaOS Backend"
+        JuliaBackend[Julia Server]
+        Swarms[Swarm Algorithms]
+        Agents[Agent System]
+        Blockchain[Blockchain Operations]
+    end
+
+    PythonApp --> JuliaOSPy
+    JuliaOSPy --> AsyncAPI
+    JuliaOSPy --> TypedAPI
+    JuliaOSPy --> Integrations
+    AsyncAPI --> Bridge
+    TypedAPI --> Bridge
+    Integrations --> Bridge
+    Bridge --> Serialization
+    Bridge --> ErrorHandling
+    Serialization --> JuliaBackend
+    ErrorHandling --> JuliaBackend
+    JuliaBackend --> Swarms
+    JuliaBackend --> Agents
+    JuliaBackend --> Blockchain
+```
+
+## API Overview
+
+### Core Classes
+
+- `JuliaOS`: Main client class for connecting to JuliaOS
+- `Swarm`: Interface to swarm optimization algorithms
+- `Agent`: Interface to agent creation and management
+- `Wallet`: Interface to wallet management
+- `Chain`: Interface to blockchain operations
+- `DEX`: Interface to decentralized exchange operations
+
+### Integrations
+
+- `LangchainAgentWrapper`: Integration with LangChain
+- `HuggingfaceWrapper`: Integration with HuggingFace models
+- `AsyncIO`: Support for asynchronous operations
+
+## Example: Working with Agents
+
+```python
+from juliaos import JuliaOS
+
+# Initialize the client
+juliaos = JuliaOS()
+
+# Create an agent
+agent = juliaos.create_agent(
+    name="PriceAnalyzer",
+    specialization="market_analysis",
+    skills=["price_prediction", "trend_detection"]
+)
+
+# Define agent behavior
+@agent.on_task("analyze_market")
+async def analyze_market(data):
+    # Agent logic here
+    trends = await agent.skills.detect_trends(data)
+    prediction = await agent.skills.predict_price(data, trends)
+    return {
+        "trends": trends,
+        "prediction": prediction
+    }
+
+# Start the agent
+agent.start()
+
+# Send task to the agent
+result = await agent.execute_task("analyze_market", data=market_data)
+print(f"Analysis result: {result}")
+```
+
+## Example: DEX Operations
+
+```python
+from juliaos import JuliaOS
+
+# Initialize the client
+juliaos = JuliaOS()
+
+# Connect a wallet (this is a simulated wallet for example purposes)
+wallet = juliaos.connect_wallet(
+    type="ethereum",
+    private_key=os.environ.get("ETH_PRIVATE_KEY")
+)
+
+# Get a quote for a token swap
+quote = await juliaos.dex.get_quote(
+    chain="ethereum",
+    from_token="ETH",
+    to_token="USDC",
+    amount="1.0"
+)
+
+print(f"Swap quote: {quote}")
+
+# Execute the swap
+if user_confirms(quote):
+    tx = await juliaos.dex.swap(
+        wallet=wallet,
+        quote=quote
     )
-
-    # Start the agent
-    await agent.start()
-
-    # Execute a task
-    task = await agent.execute_task({
-        "type": "analyze_market",
-        "parameters": {
-            "asset": "BTC",
-            "timeframe": "1h"
-        }
-    })
-
-    # Wait for task completion
-    result = await task.wait_for_completion()
-    print(result)
-
-    # Clean up
-    await agent.stop()
-    await agent.delete()
-    await juliaos.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    print(f"Transaction hash: {tx.hash}")
 ```
 
-### Swarm Optimization
+## Example: LangChain Integration
 
 ```python
-import asyncio
 from juliaos import JuliaOS
-from juliaos.swarms import DifferentialEvolution
+from juliaos.integrations import LangchainAgentWrapper
+from langchain.llms import OpenAI
 
-async def main():
-    # Initialize JuliaOS
-    juliaos = JuliaOS()
-    await juliaos.connect()
+# Initialize the client
+juliaos = JuliaOS()
 
-    try:
-        # Create a Differential Evolution optimizer
-        de = DifferentialEvolution(juliaos.bridge)
+# Create a swarm-optimized agent
+agent = juliaos.create_agent(
+    name="DataAnalyst",
+    specialization="data_analysis",
+    skills=["data_cleaning", "statistical_analysis"]
+)
 
-        # Define an objective function
-        def sphere(x):
-            return sum(xi**2 for xi in x)
-
-        # Define bounds for each dimension
-        bounds = [(-5.0, 5.0), (-5.0, 5.0)]
-
-        # Configure the algorithm
-        config = {
-            "population_size": 50,
-            "max_generations": 100,
-            "crossover_probability": 0.7,
-            "differential_weight": 0.8,
-            "max_time_seconds": 30
-        }
-
-        # Run optimization
-        result = await de.optimize(sphere, bounds, config)
-
-        print(f"Best position: {result['best_position']}")
-        print(f"Best fitness: {result['best_fitness']}")
-        print(f"Iterations: {result['iterations']}")
-
-    finally:
-        # Disconnect from JuliaOS
-        await juliaos.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## Available Swarm Algorithms
-
-The JuliaOS Python wrapper provides access to various swarm intelligence algorithms:
-
-### Differential Evolution (DE)
-
-A powerful evolutionary algorithm that excels at finding global optima in complex, multimodal landscapes. DE is particularly effective for portfolio optimization and trading strategy development due to its robustness and ability to handle non-differentiable objective functions.
-
-```python
-from juliaos.swarms import DifferentialEvolution
-
-de = DifferentialEvolution(juliaos.bridge)
-result = await de.optimize(objective_function, bounds, config)
-```
-
-### Particle Swarm Optimization (PSO)
-
-A widely used algorithm that excels in exploring continuous solution spaces. PSO is particularly effective for trading strategy optimization due to its ability to balance exploration and exploitation.
-
-```python
-from juliaos.swarms import ParticleSwarmOptimization
-
-pso = ParticleSwarmOptimization(juliaos.bridge)
-result = await pso.optimize(objective_function, bounds, config)
-```
-
-### Grey Wolf Optimizer (GWO)
-
-Simulates the hunting behavior of grey wolves, with distinct leadership hierarchy. GWO is excellent for capturing market regimes and adapting to changing market conditions.
-
-```python
-from juliaos.swarms import GreyWolfOptimizer
-
-gwo = GreyWolfOptimizer(juliaos.bridge)
-result = await gwo.optimize(objective_function, bounds, config)
-```
-
-### Ant Colony Optimization (ACO)
-
-Inspired by the foraging behavior of ants. ACO is well-suited for path-dependent strategies and sequential decision making in trading.
-
-```python
-from juliaos.swarms import AntColonyOptimization
-
-aco = AntColonyOptimization(juliaos.bridge)
-result = await aco.optimize(objective_function, bounds, config)
-```
-
-### Genetic Algorithm (GA)
-
-Mimics natural selection through evolutionary processes. Genetic algorithms are excellent for complex trading rules with many interdependent parameters.
-
-```python
-from juliaos.swarms import GeneticAlgorithm
-
-ga = GeneticAlgorithm(juliaos.bridge)
-result = await ga.optimize(objective_function, bounds, config)
-```
-
-### Whale Optimization Algorithm (WOA)
-
-Based on the bubble-net hunting strategy of humpback whales. WOA handles market volatility well with its spiral hunting technique and is effective for finding global optima.
-
-```python
-from juliaos.swarms import WhaleOptimizationAlgorithm
-
-woa = WhaleOptimizationAlgorithm(juliaos.bridge)
-result = await woa.optimize(objective_function, bounds, config)
-```
-
-## LangChain Integration
-
-JuliaOS Python wrapper provides integration with LangChain, allowing you to use JuliaOS components with LangChain.
-
-```python
-import asyncio
-from langchain_openai import ChatOpenAI
-from juliaos import JuliaOS
-from juliaos.langchain import JuliaOSTradingAgentAdapter, SwarmOptimizationTool
-
-async def main():
-    # Initialize JuliaOS
-    juliaos = JuliaOS()
-    await juliaos.connect()
-
-    # Initialize OpenAI LLM
-    llm = ChatOpenAI(model="gpt-4")
-
-    # Create a JuliaOS trading agent
-    trading_agent = await juliaos.agents.create_agent(
-        name="Trading Agent",
-        agent_type="TRADING",
-        config={"parameters": {"risk_tolerance": 0.5}}
-    )
-
-    # Create a LangChain agent from the JuliaOS agent
-    langchain_agent = JuliaOSTradingAgentAdapter(trading_agent).as_langchain_agent(
-        llm=llm,
-        verbose=True
-    )
-
-    # Run the agent
-    result = await langchain_agent.arun("Analyze the current market conditions for BTC/USDC")
-    print(result)
-
-    # Clean up
-    await juliaos.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-### Available LangChain Components
-
-- **Agent Adapters**: Convert JuliaOS agents to LangChain agents
-  - `JuliaOSAgentAdapter`: Base adapter class
-  - `JuliaOSTradingAgentAdapter`: For trading agents
-  - `JuliaOSMonitorAgentAdapter`: For monitor agents
-  - `JuliaOSArbitrageAgentAdapter`: For arbitrage agents
-
-- **Tools**: LangChain tools that wrap JuliaOS functionality
-  - `SwarmOptimizationTool`: Run swarm optimization algorithms
-  - `BlockchainQueryTool`: Query blockchain data
-  - `WalletOperationTool`: Perform wallet operations
-  - `StorageQueryTool`: Query JuliaOS storage
-
-- **Memory**: LangChain memory classes that use JuliaOS storage
-  - `JuliaOSConversationBufferMemory`: Conversation buffer memory
-  - `JuliaOSVectorStoreMemory`: Vector store memory
-
-- **Chains**: LangChain chains that use JuliaOS components
-  - `SwarmOptimizationChain`: Chain for swarm optimization
-  - `BlockchainAnalysisChain`: Chain for blockchain analysis
-  - `TradingStrategyChain`: Chain for trading strategies
-
-## LLM Providers
-
-JuliaOS Python wrapper provides a unified interface for interacting with various LLM providers:
-
-```python
-import asyncio
-from juliaos import JuliaOS
-from juliaos.llm import OpenAIProvider, LLMMessage, LLMRole
-
-async def main():
-    # Initialize JuliaOS
-    juliaos = JuliaOS()
-    await juliaos.connect()
-
-    # Initialize OpenAI provider
-    openai_provider = OpenAIProvider()
-
-    # Create messages
-    messages = [
-        LLMMessage(role=LLMRole.SYSTEM, content="You are a helpful AI assistant."),
-        LLMMessage(role=LLMRole.USER, content="What is the capital of France?")
+# Wrap with LangChain
+llm = OpenAI(temperature=0)
+langchain_agent = LangchainAgentWrapper(
+    agent=agent,
+    llm=llm,
+    tools=[
+        "data_cleaning",
+        "statistical_analysis",
+        "visualization"
     ]
+)
 
-    # Generate response
-    response = await openai_provider.generate(messages)
-    print(response.content)
-
-    # Clean up
-    await juliaos.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Use the agent in a LangChain chain
+result = langchain_agent.run(
+    "Analyze this dataset and provide insights about the price trends."
+)
 ```
 
-### Available LLM Providers
+## Async Support
 
-- **OpenAIProvider**: For OpenAI models (GPT-4, GPT-3.5, etc.)
-- **AnthropicProvider**: For Anthropic models (Claude 3 Opus, Sonnet, Haiku)
-- **LlamaProvider**: For Llama models via Replicate API
-- **MistralProvider**: For Mistral AI models
-- **CohereProvider**: For Cohere models
-- **GeminiProvider**: For Google Gemini models
-
-## Google ADK Integration
-
-JuliaOS Python wrapper provides integration with the Google Agent Development Kit (ADK):
+JuliaOS Python wrapper provides full async support for high-performance applications:
 
 ```python
 import asyncio
 from juliaos import JuliaOS
-from juliaos.adk import JuliaOSADKAdapter
 
 async def main():
-    # Initialize JuliaOS
+    # Initialize the client
     juliaos = JuliaOS()
-    await juliaos.connect()
+    
+    # Create multiple agents
+    agents = [
+        await juliaos.create_agent(name=f"Agent{i}")
+        for i in range(10)
+    ]
+    
+    # Run tasks concurrently
+    tasks = [
+        agent.execute_task("market_analysis", market="ETH/USDC")
+        for agent in agents
+    ]
+    
+    results = await asyncio.gather(*tasks)
+    
+    # Process results
+    for i, result in enumerate(results):
+        print(f"Agent {i} result: {result}")
 
-    # Create a JuliaOS agent
-    agent = await juliaos.agents.create_agent({
-        "name": "trading_agent",
-        "agent_type": "TRADING",
-        "description": "A trading agent for cryptocurrency markets"
-    })
-
-    # Create ADK adapter
-    adk_adapter = JuliaOSADKAdapter(juliaos.bridge)
-
-    # Convert JuliaOS agent to ADK agent
-    adk_agent = adk_adapter.agent_to_adk(agent)
-
-    # Process user input with the ADK agent
-    response = await adk_agent.process("What's the current market sentiment for Bitcoin?")
-    print(response.response)
-
-    # Clean up
-    await juliaos.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Run the async function
+asyncio.run(main())
 ```
 
-### Available ADK Components
+## Configuration
 
-- **JuliaOSADKAdapter**: Adapter for converting JuliaOS components to ADK components
-- **JuliaOSADKAgent**: ADK agent implementation for JuliaOS agents
-- **JuliaOSADKTool**: ADK tool implementation for JuliaOS tools
-- **JuliaOSADKMemory**: ADK memory implementation using JuliaOS storage
+The wrapper can be configured through environment variables, a configuration file, or programmatically:
 
-## Documentation
+```python
+from juliaos import JuliaOS, Config
 
-For detailed documentation, see [https://docs.juliaos.com/python](https://docs.juliaos.com/python)
+# Configure through constructor
+juliaos = JuliaOS(
+    backend_url="http://localhost:8000",
+    api_key="your-api-key",
+    log_level="info"
+)
+
+# Or using Config class
+config = Config(
+    backend_url="http://localhost:8000",
+    api_key="your-api-key",
+    log_level="info"
+)
+juliaos = JuliaOS(config=config)
+
+# Or from environment variables
+# JULIAOS_BACKEND_URL, JULIAOS_API_KEY, JULIAOS_LOG_LEVEL
+
+# Or from configuration file
+# ~/.juliaos/config.json or specified path
+juliaos = JuliaOS.from_config_file("path/to/config.json")
+```
+
+## Error Handling
+
+The wrapper provides structured error handling with detailed context:
+
+```python
+from juliaos import JuliaOS
+from juliaos.exceptions import JuliaOSError, ValidationError
+
+try:
+    juliaos = JuliaOS()
+    result = juliaos.create_swarm(algorithm="invalid_algorithm")
+except ValidationError as e:
+    print(f"Validation error: {e.message}")
+    print(f"Field: {e.field}")
+    print(f"Details: {e.details}")
+except JuliaOSError as e:
+    print(f"Error: {e.message}")
+    print(f"Error code: {e.code}")
+    print(f"Stack trace: {e.stack_trace}")
+```
+
+## Development
+
+### Setup Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/juliaos/juliaos.git
+cd juliaos/packages/python-wrapper
+
+# Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -e ".[dev]"
+```
+
+### Running Tests
+
+```bash
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=juliaos
+```
+
+### Building Documentation
+
+```bash
+# Build documentation
+cd docs
+make html
+```
 
 ## License
 

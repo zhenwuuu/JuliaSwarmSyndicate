@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "J3OS Framework - Web3 Cross Chain/Multi Chain AI Agent/Swarm DeFi Platform",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -31,6 +31,8 @@
     "@pinecone-database/pinecone": "^5.1.1",
     "@solana/web3.js": "^1.98.0",
     "@xenova/transformers": "^2.17.2",
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^4.11.0",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "conf": "^10.2.0",
@@ -42,6 +44,8 @@
     "inquirer": "^8.2.6",
     "langchain-core": "^0.0.4",
     "log-symbols": "^4.1.0",
+    "marked": "^15.0.8",
+    "marked-terminal": "^7.3.0",
     "node-fetch": "^3.3.2",
     "onnxruntime-node": "^1.21.0",
     "openai": "^4.87.3",

@@ -33,7 +33,7 @@ setup(
     description="Python wrapper for JuliaOS Framework",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/juliaos/juliaos",
+    url="https://github.com/Juliaoscode/JuliaOS",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
