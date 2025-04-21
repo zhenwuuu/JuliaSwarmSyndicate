@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:23-slim
 
 # Install Julia dependencies
 RUN apt-get update && apt-get install -y \
