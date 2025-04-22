@@ -59,20 +59,135 @@ Optimize the given problem using Particle Swarm Optimization.
 # Returns
 - `OptimizationResult`: The optimization result containing the best solution found
 """
-function optimize(problem::OptimizationProblem, algorithm::ParticleSwarmOptimization)
-    # This is a simplified implementation
-    # In a real implementation, we would implement the full PSO algorithm
+function optimize(problem::OptimizationProblem, algorithm::ParticleSwarmOptimization; callback=nothing)
+    # Initialize parameters
+    n_particles = algorithm.swarm_size
+    max_iter = algorithm.max_iterations
+    c1 = algorithm.c1
+    c2 = algorithm.c2
+    w = algorithm.w
+    w_damp = algorithm.w_damp
+    dim = problem.dimensions
+    bounds = problem.bounds
+    obj_func = problem.objective_function
+    is_min = problem.is_minimization
 
-    # Return a mock result
+    # Initialize particles
+    positions = zeros(n_particles, dim)
+    velocities = zeros(n_particles, dim)
+    personal_best_positions = zeros(n_particles, dim)
+    personal_best_fitness = fill(is_min ? Inf : -Inf, n_particles)
+
+    # Initialize global best
+    global_best_position = zeros(dim)
+    global_best_fitness = is_min ? Inf : -Inf
+
+    # Initialize convergence curve
+    convergence_curve = zeros(max_iter)
+
+    # Function evaluation counter
+    evaluations = 0
+
+    # Initialize particles with random positions and velocities
+    for i in 1:n_particles
+        # Random position within bounds
+        for j in 1:dim
+            min_val, max_val = bounds[j]
+            positions[i, j] = min_val + rand() * (max_val - min_val)
+            # Random velocity within [-|max-min|, |max-min|]
+            velocities[i, j] = (rand() * 2 - 1) * (max_val - min_val)
+        end
+
+        # Evaluate fitness
+        fitness = obj_func(positions[i, :])
+        evaluations += 1
+
+        # Initialize personal best
+        personal_best_positions[i, :] = positions[i, :]
+        personal_best_fitness[i] = fitness
+
+        # Update global best if needed
+        if (is_min && fitness < global_best_fitness) || (!is_min && fitness > global_best_fitness)
+            global_best_fitness = fitness
+            global_best_position = positions[i, :]
+        end
+    end
+
+    # Main PSO loop
+    for iter in 1:max_iter
+        # Update inertia weight
+        w = w * w_damp
+
+        # Update particles
+        for i in 1:n_particles
+            # Update velocity
+            for j in 1:dim
+                # Cognitive component
+                r1 = rand()
+                cognitive = c1 * r1 * (personal_best_positions[i, j] - positions[i, j])
+
+                # Social component
+                r2 = rand()
+                social = c2 * r2 * (global_best_position[j] - positions[i, j])
+
+                # Update velocity with inertia
+                velocities[i, j] = w * velocities[i, j] + cognitive + social
+
+                # Apply velocity bounds (optional)
+                min_val, max_val = bounds[j]
+                vel_range = max_val - min_val
+                velocities[i, j] = clamp(velocities[i, j], -vel_range, vel_range)
+            end
+
+            # Update position
+            for j in 1:dim
+                positions[i, j] += velocities[i, j]
+
+                # Apply position bounds
+                min_val, max_val = bounds[j]
+                positions[i, j] = clamp(positions[i, j], min_val, max_val)
+            end
+
+            # Evaluate fitness
+            fitness = obj_func(positions[i, :])
+            evaluations += 1
+
+            # Update personal best if needed
+            if (is_min && fitness < personal_best_fitness[i]) || (!is_min && fitness > personal_best_fitness[i])
+                personal_best_fitness[i] = fitness
+                personal_best_positions[i, :] = positions[i, :]
+
+                # Update global best if needed
+                if (is_min && fitness < global_best_fitness) || (!is_min && fitness > global_best_fitness)
+                    global_best_fitness = fitness
+                    global_best_position = positions[i, :]
+                end
+            end
+        end
+
+        # Store best fitness for convergence curve
+        convergence_curve[iter] = global_best_fitness
+
+        # Call callback if provided
+        if callback !== nothing
+            callback_result = callback(iter, global_best_position, global_best_fitness, positions)
+            if callback_result === false
+                # Early termination if callback returns false
+                convergence_curve = convergence_curve[1:iter]
+                break
+            end
+        end
+    end
+
     return OptimizationResult(
-        rand(problem.dimensions),  # best_position
-        0.0,                      # best_fitness
-        [0.0],                    # convergence_curve
-        1,                        # iterations
-        1,                        # evaluations
-        "Particle Swarm Optimization", # algorithm_name
+        global_best_position,
+        global_best_fitness,
+        convergence_curve,
+        max_iter,
+        evaluations,
+        "Particle Swarm Optimization",
         success = true,
-        message = "Mock implementation"
+        message = "Optimization completed successfully"
     )
 end
 

@@ -10,6 +10,8 @@ This package provides a Python interface to JuliaOS, enabling Python developers 
 - Type hints for improved developer experience
 - Comprehensive examples and Jupyter notebooks
 - Advanced workflow support for complex agent behaviors
+- NumPy integration for scientific computing and optimization
+- Async context manager support for cleaner code
 
 ## Installation
 
@@ -215,6 +217,49 @@ result = langchain_agent.run(
 )
 ```
 
+## NumPy Integration
+
+JuliaOS Python wrapper provides seamless integration with NumPy for scientific computing and optimization:
+
+```python
+import numpy as np
+from juliaos import JuliaOS
+from juliaos.swarms import DifferentialEvolution
+
+# Define objective function using NumPy
+def rastrigin(x: np.ndarray) -> float:
+    return 10 * len(x) + np.sum(x**2 - 10 * np.cos(2 * np.pi * x))
+
+async def main():
+    # Initialize the client using async context manager
+    async with JuliaOS() as juliaos:
+        # Create algorithm instance
+        de = DifferentialEvolution(juliaos.bridge)
+
+        # Define bounds as NumPy array
+        bounds = np.array([[-5.12, 5.12]] * 5)  # 5-dimensional problem
+
+        # Run optimization
+        result = await de.optimize(
+            objective_function=rastrigin,
+            bounds=bounds,
+            config={
+                "population_size": 30,
+                "max_generations": 100
+            }
+        )
+
+        # Access result with NumPy arrays
+        best_position = result['best_position_np']  # NumPy array
+        best_fitness = result['best_fitness']
+
+        print(f"Best position: {best_position}")
+        print(f"Best fitness: {best_fitness}")
+
+# Run the async function
+asyncio.run(main())
+```
+
 ## Async Support
 
 JuliaOS Python wrapper provides full async support for high-performance applications:
@@ -225,25 +270,24 @@ from juliaos import JuliaOS
 
 async def main():
     # Initialize the client
-    juliaos = JuliaOS()
-    
-    # Create multiple agents
-    agents = [
-        await juliaos.create_agent(name=f"Agent{i}")
-        for i in range(10)
-    ]
-    
-    # Run tasks concurrently
-    tasks = [
-        agent.execute_task("market_analysis", market="ETH/USDC")
-        for agent in agents
-    ]
-    
-    results = await asyncio.gather(*tasks)
-    
-    # Process results
-    for i, result in enumerate(results):
-        print(f"Agent {i} result: {result}")
+    async with JuliaOS() as juliaos:
+        # Create multiple agents
+        agents = [
+            await juliaos.create_agent(name=f"Agent{i}")
+            for i in range(10)
+        ]
+
+        # Run tasks concurrently
+        tasks = [
+            agent.execute_task("market_analysis", market="ETH/USDC")
+            for agent in agents
+        ]
+
+        results = await asyncio.gather(*tasks)
+
+        # Process results
+        for i, result in enumerate(results):
+            print(f"Agent {i} result: {result}")
 
 # Run the async function
 asyncio.run(main())

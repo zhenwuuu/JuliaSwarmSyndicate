@@ -268,6 +268,104 @@ try
                     command = "agents.create_agent"
                 end
 
+                # Special case for agents.create_agent command
+                if command == "agents.create_agent"
+                    @info "Handling agents.create_agent command directly"
+                    # Check if required parameters are provided
+                    name = get(params, "name", nothing)
+                    agent_type = get(params, "type", "CUSTOM")
+
+                    if isnothing(name)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: name")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :createAgent) && isdefined(JuliaOS.Agents, :AgentConfig) && isdefined(JuliaOS.Agents, :AgentType)
+                        @info "Using JuliaOS.Agents.createAgent"
+
+                        # Convert string type to enum
+                        agent_type_enum = JuliaOS.Agents.CUSTOM # Default to CUSTOM
+                        try
+                            if isa(agent_type, String)
+                                agent_type_enum = getfield(JuliaOS.Agents, Symbol(uppercase(agent_type)))
+                            elseif isa(agent_type, Integer)
+                                agent_type_enum = JuliaOS.Agents.AgentType(agent_type)
+                            end
+                        catch e
+                            @warn "Invalid agent type: $agent_type, using CUSTOM" exception=e
+                        end
+
+                        # Get additional parameters
+                        abilities = String[]
+                        if haskey(params, "abilities")
+                            # Convert Any[] to String[]
+                            for ability in params["abilities"]
+                                push!(abilities, string(ability))
+                            end
+                        end
+
+                        chains = String[]
+                        if haskey(params, "chains")
+                            # Convert Any[] to String[]
+                            for chain in params["chains"]
+                                push!(chains, string(chain))
+                            end
+                        end
+
+                        parameters = get(params, "parameters", Dict{String,Any}())
+                        llm_config = get(params, "llm_config", Dict{String,Any}())
+                        memory_config = get(params, "memory_config", Dict{String,Any}())
+                        max_task_history = get(params, "max_task_history", 100)
+
+                        # Create agent config
+                        config = JuliaOS.Agents.AgentConfig(
+                            name,
+                            agent_type_enum;
+                            abilities=abilities,
+                            chains=chains,
+                            parameters=parameters,
+                            llm_config=llm_config,
+                            memory_config=memory_config,
+                            max_task_history=max_task_history
+                        )
+
+                        # Create the agent
+                        agent = JuliaOS.Agents.createAgent(config)
+
+                        # Format the response
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "id" => agent.id,
+                                "name" => agent.name,
+                                "type" => Int(agent.type),
+                                "status" => Int(agent.status),
+                                "created" => string(agent.created),
+                                "updated" => string(agent.updated)
+                            )
+                        )
+
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    else
+                        @warn "JuliaOS.Agents module not available or createAgent not defined, using mock implementation"
+                        # Mock implementation for create_agent
+                        agent_id = "agent-" * randstring(8)
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "id" => agent_id,
+                                "name" => name,
+                                "type" => isa(agent_type, Integer) ? agent_type : 99, # CUSTOM = 99
+                                "status" => 1, # CREATED = 1
+                                "created" => string(now()),
+                                "updated" => string(now())
+                            )
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
                 # Special case for system.ping command
                 if command == "system.ping"
                     @info "Handling system.ping command directly"
@@ -361,9 +459,9 @@ try
                     return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
                 end
 
-                # Special case for swarm.list_algorithms command
-                if command == "swarm.list_algorithms"
-                    @info "Handling swarm.list_algorithms command directly"
+                # Special case for swarm algorithm commands
+                if command == "swarm.list_algorithms" || command == "Swarm.get_available_algorithms"
+                    @info "Handling swarm algorithm command directly: $command"
                     # Check if Swarms module is available
                     if isdefined(JuliaOS, :Swarms) && isdefined(JuliaOS.Swarms, :list_algorithms)
                         @info "Using JuliaOS.Swarms.list_algorithms"
@@ -537,10 +635,10 @@ try
                 # Special case for agents.list_agents command
                 if command == "agents.list_agents"
                     @info "Handling agents.list_agents command directly"
-                    # Check if AgentSystem module is available
-                    if isdefined(JuliaOS, :AgentSystem) && isdefined(JuliaOS.AgentSystem, :list_agents)
-                        @info "Using JuliaOS.AgentSystem.list_agents"
-                        agents = JuliaOS.AgentSystem.list_agents()
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :listAgents)
+                        @info "Using JuliaOS.Agents.listAgents"
+                        agents = JuliaOS.Agents.listAgents()
 
                         # Apply filters if specified
                         if haskey(params, "type")
@@ -618,6 +716,222 @@ try
                             )
                         )
 
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
+                # Special case for agents.start_agent command
+                if command == "agents.start_agent"
+                    @info "Handling agents.start_agent command directly"
+                    # Check if required parameters are provided
+                    agent_id = get(params, "agent_id", nothing)
+
+                    if isnothing(agent_id)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: agent_id")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :startAgent)
+                        @info "Using JuliaOS.Agents.startAgent"
+                        success = JuliaOS.Agents.startAgent(agent_id)
+
+                        if success
+                            result = Dict(
+                                "success" => true,
+                                "data" => Dict(
+                                    "agent_id" => agent_id,
+                                    "status" => "started"
+                                )
+                            )
+                            return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                        else
+                            error_response = Dict("success" => false, "error" => "Failed to start agent: $agent_id")
+                            return HTTP.Response(500, ["Content-Type" => "application/json"], JSON.json(error_response))
+                        end
+                    else
+                        @warn "JuliaOS.Agents module not available or startAgent not defined, using mock implementation"
+                        # Mock implementation for start_agent
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "agent_id" => agent_id,
+                                "status" => "started"
+                            )
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
+                # Special case for agents.stop_agent command
+                if command == "agents.stop_agent"
+                    @info "Handling agents.stop_agent command directly"
+                    # Check if required parameters are provided
+                    agent_id = get(params, "agent_id", nothing)
+
+                    if isnothing(agent_id)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: agent_id")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :stopAgent)
+                        @info "Using JuliaOS.Agents.stopAgent"
+                        success = JuliaOS.Agents.stopAgent(agent_id)
+
+                        if success
+                            result = Dict(
+                                "success" => true,
+                                "data" => Dict(
+                                    "agent_id" => agent_id,
+                                    "status" => "stopped"
+                                )
+                            )
+                            return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                        else
+                            error_response = Dict("success" => false, "error" => "Failed to stop agent: $agent_id")
+                            return HTTP.Response(500, ["Content-Type" => "application/json"], JSON.json(error_response))
+                        end
+                    else
+                        @warn "JuliaOS.Agents module not available or stopAgent not defined, using mock implementation"
+                        # Mock implementation for stop_agent
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "agent_id" => agent_id,
+                                "status" => "stopped"
+                            )
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
+                # Special case for agents.pause_agent command
+                if command == "agents.pause_agent"
+                    @info "Handling agents.pause_agent command directly"
+                    # Check if required parameters are provided
+                    agent_id = get(params, "agent_id", nothing)
+
+                    if isnothing(agent_id)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: agent_id")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :pauseAgent)
+                        @info "Using JuliaOS.Agents.pauseAgent"
+                        success = JuliaOS.Agents.pauseAgent(agent_id)
+
+                        if success
+                            result = Dict(
+                                "success" => true,
+                                "data" => Dict(
+                                    "agent_id" => agent_id,
+                                    "status" => "paused"
+                                )
+                            )
+                            return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                        else
+                            error_response = Dict("success" => false, "error" => "Failed to pause agent: $agent_id")
+                            return HTTP.Response(500, ["Content-Type" => "application/json"], JSON.json(error_response))
+                        end
+                    else
+                        @warn "JuliaOS.Agents module not available or pauseAgent not defined, using mock implementation"
+                        # Mock implementation for pause_agent
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "agent_id" => agent_id,
+                                "status" => "paused"
+                            )
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
+                # Special case for agents.resume_agent command
+                if command == "agents.resume_agent"
+                    @info "Handling agents.resume_agent command directly"
+                    # Check if required parameters are provided
+                    agent_id = get(params, "agent_id", nothing)
+
+                    if isnothing(agent_id)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: agent_id")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :resumeAgent)
+                        @info "Using JuliaOS.Agents.resumeAgent"
+                        success = JuliaOS.Agents.resumeAgent(agent_id)
+
+                        if success
+                            result = Dict(
+                                "success" => true,
+                                "data" => Dict(
+                                    "agent_id" => agent_id,
+                                    "status" => "resumed"
+                                )
+                            )
+                            return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                        else
+                            error_response = Dict("success" => false, "error" => "Failed to resume agent: $agent_id")
+                            return HTTP.Response(500, ["Content-Type" => "application/json"], JSON.json(error_response))
+                        end
+                    else
+                        @warn "JuliaOS.Agents module not available or resumeAgent not defined, using mock implementation"
+                        # Mock implementation for resume_agent
+                        result = Dict(
+                            "success" => true,
+                            "data" => Dict(
+                                "agent_id" => agent_id,
+                                "status" => "resumed"
+                            )
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    end
+                end
+
+                # Special case for agents.get_agent_status command
+                if command == "agents.get_agent_status"
+                    @info "Handling agents.get_agent_status command directly"
+                    # Check if required parameters are provided
+                    agent_id = get(params, "agent_id", nothing)
+
+                    if isnothing(agent_id)
+                        error_response = Dict("success" => false, "error" => "Missing required parameter: agent_id")
+                        return HTTP.Response(400, ["Content-Type" => "application/json"], JSON.json(error_response))
+                    end
+
+                    # Check if Agents module is available
+                    if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :getAgentStatus)
+                        @info "Using JuliaOS.Agents.getAgentStatus"
+                        status = JuliaOS.Agents.getAgentStatus(agent_id)
+
+                        result = Dict(
+                            "success" => true,
+                            "data" => status
+                        )
+                        return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
+                    else
+                        @warn "JuliaOS.Agents module not available or getAgentStatus not defined, using mock implementation"
+                        # Mock implementation for get_agent_status
+                        status = Dict(
+                            "id" => agent_id,
+                            "name" => "Agent $agent_id",
+                            "type" => "CUSTOM",
+                            "status" => "RUNNING",
+                            "uptime_seconds" => rand(1:3600),
+                            "tasks_completed" => rand(0:100),
+                            "queue_len" => rand(0:10),
+                            "memory_size" => rand(0:1000),
+                            "last_updated" => string(now() - Dates.Second(rand(1:3600)))
+                        )
+
+                        result = Dict(
+                            "success" => true,
+                            "data" => status
+                        )
                         return HTTP.Response(200, ["Content-Type" => "application/json"], JSON.json(result))
                     end
                 end

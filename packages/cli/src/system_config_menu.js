@@ -332,42 +332,93 @@ async function configureStorageSettings() {
         const storageConfig = currentConfig.storage || {};
 
         // Prompt for storage settings
-        const { storageType, dbPath, useArweave } = await inquirer.prompt([
+        const { storageType, dbPath, useArweave, useDocumentStorage } = await inquirer.prompt([
             {
                 type: 'list',
                 name: 'storageType',
-                message: 'Storage Type:',
-                choices: ['local', 'remote', 'hybrid'],
+                message: 'Primary Storage Type:',
+                choices: [
+                    { name: 'Local (SQLite)', value: 'local' },
+                    { name: 'Arweave (Decentralized)', value: 'arweave' },
+                    { name: 'Document Storage', value: 'document' },
+                    { name: 'Hybrid (Local + Arweave)', value: 'hybrid' }
+                ],
                 default: storageConfig.storage_type || 'local'
             },
             {
                 type: 'input',
                 name: 'dbPath',
-                message: 'Database Path:',
-                default: storageConfig.db_path || './data/juliaos.db'
+                message: 'Local Database Path:',
+                default: storageConfig.db_path || './data/juliaos.db',
+                when: (answers) => answers.storageType === 'local' || answers.storageType === 'hybrid'
             },
             {
                 type: 'confirm',
                 name: 'useArweave',
-                message: 'Use Arweave for Decentralized Storage:',
-                default: storageConfig.use_arweave !== undefined ? storageConfig.use_arweave : false
+                message: 'Enable Arweave for Decentralized Storage:',
+                default: storageConfig.use_arweave !== undefined ? storageConfig.use_arweave : false,
+                when: (answers) => answers.storageType !== 'arweave'
+            },
+            {
+                type: 'confirm',
+                name: 'useDocumentStorage',
+                message: 'Enable Document Storage with Search:',
+                default: storageConfig.use_document_storage !== undefined ? storageConfig.use_document_storage : false
             }
         ]);
 
-        // If Arweave is enabled, prompt for Arweave settings
+        // If Arweave is enabled or selected as primary, prompt for Arweave settings
         let arweaveConfig = {};
-        if (useArweave) {
-            const { arweaveWalletPath } = await inquirer.prompt([
+        if (useArweave || storageType === 'arweave' || storageType === 'hybrid') {
+            const { arweaveWalletPath, arweaveApiUrl, arweaveCacheEnabled } = await inquirer.prompt([
                 {
                     type: 'input',
                     name: 'arweaveWalletPath',
                     message: 'Arweave Wallet Path:',
                     default: storageConfig.arweave_wallet_path || './arweave-keyfile.json'
+                },
+                {
+                    type: 'input',
+                    name: 'arweaveApiUrl',
+                    message: 'Arweave API URL:',
+                    default: storageConfig.arweave_api_url || 'https://arweave.net'
+                },
+                {
+                    type: 'confirm',
+                    name: 'arweaveCacheEnabled',
+                    message: 'Enable Local Cache for Arweave:',
+                    default: storageConfig.arweave_cache_enabled !== undefined ? storageConfig.arweave_cache_enabled : true
                 }
             ]);
 
             arweaveConfig = {
-                arweave_wallet_path: arweaveWalletPath
+                arweave_wallet_path: arweaveWalletPath,
+                arweave_api_url: arweaveApiUrl,
+                arweave_cache_enabled: arweaveCacheEnabled
+            };
+        }
+
+        // If document storage is enabled, prompt for document storage settings
+        let documentConfig = {};
+        if (useDocumentStorage || storageType === 'document') {
+            const { indexEnabled, searchEnabled } = await inquirer.prompt([
+                {
+                    type: 'confirm',
+                    name: 'indexEnabled',
+                    message: 'Enable Document Indexing:',
+                    default: storageConfig.document_index_enabled !== undefined ? storageConfig.document_index_enabled : true
+                },
+                {
+                    type: 'confirm',
+                    name: 'searchEnabled',
+                    message: 'Enable Document Search:',
+                    default: storageConfig.document_search_enabled !== undefined ? storageConfig.document_search_enabled : true
+                }
+            ]);
+
+            documentConfig = {
+                document_index_enabled: indexEnabled,
+                document_search_enabled: searchEnabled
             };
         }
 
@@ -380,8 +431,10 @@ async function configureStorageSettings() {
                     storage: {
                         storage_type: storageType,
                         db_path: dbPath,
-                        use_arweave: useArweave,
-                        ...arweaveConfig
+                        use_arweave: useArweave || storageType === 'arweave' || storageType === 'hybrid',
+                        use_document_storage: useDocumentStorage || storageType === 'document',
+                        ...arweaveConfig,
+                        ...documentConfig
                     }
                 }
             ]);

@@ -82,7 +82,10 @@ async function bridgeTokens() {
             { name: 'LayerZero', value: 'layerzero' },
             { name: 'Axelar', value: 'axelar' },
             { name: 'Synapse', value: 'synapse' },
-            { name: 'Across', value: 'across' }
+            { name: 'Hop', value: 'hop' },
+            { name: 'Across', value: 'across' },
+            { name: 'Stargate', value: 'stargate' },
+            { name: 'Multichain', value: 'multichain' }
         ];
 
         // Prompt for bridge protocol

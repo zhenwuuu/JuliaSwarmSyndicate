@@ -303,8 +303,10 @@ function calculate_standard_deviation(archive, dimension, selected_idx, archive_
         end
     end
 
-    # Calculate standard deviation
-    sigma = xi * sum_distances / (archive_size - 1)
+    # Calculate standard deviation using a fixed xi value
+    # This should ideally come from the algorithm parameters
+    xi_value = 0.7
+    sigma = xi_value * sum_distances / (archive_size - 1)
 
     return max(sigma, 1e-10)  # Ensure minimum standard deviation
 end
