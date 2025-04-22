@@ -23,6 +23,15 @@ class JuliaOS:
     This class provides access to all the components of the JuliaOS Framework,
     including agents, swarms, blockchain, wallet, and storage.
 
+    This class can be used as an async context manager:
+
+    ```python
+    async with JuliaOS() as juliaos:
+        # Use juliaos here
+        result = await juliaos.ping()
+    # Connection is automatically closed when exiting the context
+    ```
+
     Attributes:
         agents (AgentManager): Manager for agent operations
         swarms (SwarmManager): Manager for swarm operations
@@ -158,3 +167,23 @@ class JuliaOS:
             return await self.bridge.execute(command, args or [])
         except Exception as e:
             raise JuliaOSError(f"Failed to execute command '{command}': {e}")
+
+    async def __aenter__(self):
+        """
+        Async context manager entry point.
+
+        Connects to the JuliaOS server when entering the context.
+
+        Returns:
+            JuliaOS: The JuliaOS instance
+        """
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """
+        Async context manager exit point.
+
+        Disconnects from the JuliaOS server when exiting the context.
+        """
+        await self.disconnect()

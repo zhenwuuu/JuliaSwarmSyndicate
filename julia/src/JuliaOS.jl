@@ -1,7 +1,7 @@
 module JuliaOS
 
 # Export public modules
-export initialize, API, Storage, Swarms, SwarmBase, Types
+export initialize, API, Storage, Swarms, SwarmBase, Types, CommandHandler, Agents
 
 # Constants for feature detection
 const PYTHON_WRAPPER_EXISTS = isfile(joinpath(@__DIR__, "python/python_bridge.jl"))
@@ -115,6 +115,7 @@ include("swarm/algorithms/DEPSO.jl")
 using .Swarms
 
 # Include command handlers (after all modules are loaded)
+include("command_handler.jl")
 include("api/rest/handlers/CommandHandler.jl")
 include("api/rest/handlers/agent_commands.jl")
 include("api/rest/handlers/blockchain_commands.jl")
@@ -128,6 +129,9 @@ include("api/rest/handlers/metrics_commands.jl")
 include("api/rest/handlers/portfolio_commands.jl")
 include("api/rest/handlers/wallet_commands.jl")
 include("api/rest/handlers/wormhole_commands.jl")
+
+# Use the new CommandHandler module
+using .CommandHandler
 
 # Python integration
 include("bridges/PythonBridge.jl")

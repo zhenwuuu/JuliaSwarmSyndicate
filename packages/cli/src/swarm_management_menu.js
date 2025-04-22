@@ -82,8 +82,12 @@ async function listSwarms(breadcrumbs) {
             });
             spinner.stop();
 
-            // Check if response has a swarms property
-            if (response && response.swarms) {
+            // Handle different response formats
+            if (response && response.success && response.data && response.data.swarms) {
+                // New format: { success: true, data: { swarms: [...] } }
+                swarms = response.data.swarms;
+            } else if (response && response.swarms) {
+                // Old format: { swarms: [...] }
                 swarms = response.swarms;
             } else if (Array.isArray(response)) {
                 // If response is already an array, use it directly
@@ -186,9 +190,11 @@ async function createSwarm(breadcrumbs) {
                 choices: [
                     { name: 'Particle Swarm Optimization (PSO)', value: 'pso' },
                     { name: 'Differential Evolution (DE)', value: 'de' },
+                    { name: 'Grey Wolf Optimizer (GWO)', value: 'gwo' },
                     { name: 'Ant Colony Optimization (ACO)', value: 'aco' },
                     { name: 'Genetic Algorithm (GA)', value: 'ga' },
-                    { name: 'Hybrid Algorithm', value: 'hybrid' }
+                    { name: 'Whale Optimization Algorithm (WOA)', value: 'woa' },
+                    { name: 'Hybrid DEPSO', value: 'depso' }
                 ]
             },
             {
@@ -256,13 +262,25 @@ async function createSwarm(breadcrumbs) {
             return;
         }
 
-        if (!result || !result.swarm_id) {
+        // Extract swarm data from the response
+        let swarmData = null;
+        if (result && result.success && result.data) {
+            // New format: { success: true, data: { swarm_id: ... } }
+            swarmData = result.data;
+        } else if (result && result.swarm_id) {
+            // Old format: { swarm_id: ... }
+            swarmData = result;
+        }
+
+        if (!swarmData || !swarmData.swarm_id) {
             console.log(chalk.red(`Error: Failed to create swarm - unexpected response format`));
+            console.log(chalk.yellow(`Response: ${JSON.stringify(result, null, 2)}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
+
         console.log(chalk.green('\nSwarm created successfully!'));
-        console.log(chalk.cyan(`Swarm ID: ${result.swarm_id}`));
+        console.log(chalk.cyan(`Swarm ID: ${swarmData.swarm_id}`));
         console.log(chalk.cyan(`Swarm Name: ${name}`));
         console.log(chalk.cyan(`Type: ${type}`));
         console.log(chalk.cyan(`Algorithm: ${algorithm}`));
@@ -297,12 +315,22 @@ async function viewSwarmDetails(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!result.success) {
-            console.log(chalk.red(`Error: ${result.error || 'Failed to fetch swarms'}`));
+        // Extract swarms from the response
+        let swarms = [];
+        if (result && result.success && result.data && result.data.swarms) {
+            // New format: { success: true, data: { swarms: [...] } }
+            swarms = result.data.swarms;
+        } else if (result && result.swarms) {
+            // Old format: { swarms: [...] }
+            swarms = result.swarms;
+        } else if (result && Array.isArray(result)) {
+            // Direct array format
+            swarms = result;
+        } else if (!result || !result.success) {
+            console.log(chalk.red(`Error: ${result?.error || 'Failed to fetch swarms'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        const swarms = result.swarms || [];
         if (swarms.length === 0) {
             console.log(chalk.yellow('\nNo swarms found. Create a new swarm to get started.'));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
@@ -332,12 +360,30 @@ async function viewSwarmDetails(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!detailsResult.success) {
+        // Extract swarm details from the response
+        let swarm = null;
+        if (detailsResult && detailsResult.success && detailsResult.data) {
+            // New format: { success: true, data: {...} }
+            swarm = detailsResult.data;
+        } else if (detailsResult && detailsResult.swarm) {
+            // Old format: { swarm: {...} }
+            swarm = detailsResult.swarm;
+        } else if (detailsResult && typeof detailsResult === 'object' && !detailsResult.success) {
             console.log(chalk.red(`Error: ${detailsResult.error || 'Failed to fetch swarm details'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
+        } else if (!detailsResult) {
+            console.log(chalk.red('Failed to fetch swarm details: No response from server'));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
         }
-        const swarm = detailsResult.swarm;
+
+        if (!swarm || typeof swarm !== 'object') {
+            console.log(chalk.red(`Error: Invalid swarm details format`));
+            console.log(chalk.yellow(`Response: ${JSON.stringify(detailsResult, null, 2)}`));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
+        }
         console.log(chalk.cyan(`\nSwarm Details: ${swarm.name || swarm.id}`));
         console.log(chalk.bold('\nBasic Information:'));
         console.log(`ID: ${swarm.id}`);
@@ -386,12 +432,22 @@ async function configureSwarm(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!result.success) {
-            console.log(chalk.red(`Error: ${result.error || 'Failed to fetch swarms'}`));
+        // Extract swarms from the response
+        let swarms = [];
+        if (result && result.success && result.data && result.data.swarms) {
+            // New format: { success: true, data: { swarms: [...] } }
+            swarms = result.data.swarms;
+        } else if (result && result.swarms) {
+            // Old format: { swarms: [...] }
+            swarms = result.swarms;
+        } else if (result && Array.isArray(result)) {
+            // Direct array format
+            swarms = result;
+        } else if (!result || !result.success) {
+            console.log(chalk.red(`Error: ${result?.error || 'Failed to fetch swarms'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        const swarms = result.swarms || [];
         if (swarms.length === 0) {
             console.log(chalk.yellow('\nNo swarms found. Create a new swarm to get started.'));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
@@ -421,12 +477,30 @@ async function configureSwarm(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!detailsResult.success) {
+        // Extract swarm details from the response
+        let swarm = null;
+        if (detailsResult && detailsResult.success && detailsResult.data) {
+            // New format: { success: true, data: {...} }
+            swarm = detailsResult.data;
+        } else if (detailsResult && detailsResult.swarm) {
+            // Old format: { swarm: {...} }
+            swarm = detailsResult.swarm;
+        } else if (detailsResult && typeof detailsResult === 'object' && !detailsResult.success) {
             console.log(chalk.red(`Error: ${detailsResult.error || 'Failed to fetch swarm details'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
+        } else if (!detailsResult) {
+            console.log(chalk.red('Failed to fetch swarm details: No response from server'));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
         }
-        const swarm = detailsResult.swarm;
+
+        if (!swarm || typeof swarm !== 'object') {
+            console.log(chalk.red(`Error: Invalid swarm details format`));
+            console.log(chalk.yellow(`Response: ${JSON.stringify(detailsResult, null, 2)}`));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
+        }
         // Prompt user for configuration options
         const { configOption } = await inquirer.prompt([
             {
@@ -472,9 +546,11 @@ async function configureSwarm(breadcrumbs) {
                         choices: [
                             { name: 'Particle Swarm Optimization (PSO)', value: 'pso' },
                             { name: 'Differential Evolution (DE)', value: 'de' },
+                            { name: 'Grey Wolf Optimizer (GWO)', value: 'gwo' },
                             { name: 'Ant Colony Optimization (ACO)', value: 'aco' },
                             { name: 'Genetic Algorithm (GA)', value: 'ga' },
-                            { name: 'Hybrid Algorithm', value: 'hybrid' }
+                            { name: 'Whale Optimization Algorithm (WOA)', value: 'woa' },
+                            { name: 'Hybrid DEPSO', value: 'depso' }
                         ]
                     }
                 ]);
@@ -586,12 +662,19 @@ async function configureSwarm(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!updateResult.success) {
+        // Check if the update operation was successful
+        if (updateResult && updateResult.success) {
+            console.log(chalk.green('\nSwarm configuration updated successfully!'));
+        } else if (updateResult && !updateResult.success) {
             console.log(chalk.red(`Error: ${updateResult.error || 'Failed to update swarm configuration'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
+        } else {
+            console.log(chalk.red('Failed to update swarm configuration: Unexpected response format'));
+            console.log(chalk.yellow(`Response: ${JSON.stringify(updateResult, null, 2)}`));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
         }
-        console.log(chalk.green('\nSwarm configuration updated successfully!'));
     } catch (error) {
         console.error(chalk.red('An unexpected error occurred while configuring a swarm.'));
         console.error(chalk.red('Details:'), error.message);
@@ -616,12 +699,22 @@ async function deleteSwarm(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!result.success) {
-            console.log(chalk.red(`Error: ${result.error || 'Failed to fetch swarms'}`));
+        // Extract swarms from the response
+        let swarms = [];
+        if (result && result.success && result.data && result.data.swarms) {
+            // New format: { success: true, data: { swarms: [...] } }
+            swarms = result.data.swarms;
+        } else if (result && result.swarms) {
+            // Old format: { swarms: [...] }
+            swarms = result.swarms;
+        } else if (result && Array.isArray(result)) {
+            // Direct array format
+            swarms = result;
+        } else if (!result || !result.success) {
+            console.log(chalk.red(`Error: ${result?.error || 'Failed to fetch swarms'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        const swarms = result.swarms || [];
         if (swarms.length === 0) {
             console.log(chalk.yellow('\nNo swarms found. Create a new swarm to get started.'));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
@@ -665,12 +758,19 @@ async function deleteSwarm(breadcrumbs) {
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
         }
-        if (!deleteResult.success) {
+        // Check if the delete operation was successful
+        if (deleteResult && deleteResult.success) {
+            console.log(chalk.green('\nSwarm deleted successfully!'));
+        } else if (deleteResult && !deleteResult.success) {
             console.log(chalk.red(`Error: ${deleteResult.error || 'Failed to delete swarm'}`));
             await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
             return;
+        } else {
+            console.log(chalk.red('Failed to delete swarm: Unexpected response format'));
+            console.log(chalk.yellow(`Response: ${JSON.stringify(deleteResult, null, 2)}`));
+            await inquirer.prompt([{type: 'input', name: 'continue', message: 'Press Enter to continue...'}]);
+            return;
         }
-        console.log(chalk.green('\nSwarm deleted successfully!'));
     } catch (error) {
         console.error(chalk.red('An unexpected error occurred while deleting a swarm.'));
         console.error(chalk.red('Details:'), error.message);

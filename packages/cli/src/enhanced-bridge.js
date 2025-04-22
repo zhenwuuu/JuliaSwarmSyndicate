@@ -47,15 +47,39 @@ class EnhancedJuliaBridge {
    */
   _initializeCommandMappings() {
     return {
-      // Agent commands
+      // Agent commands - updated for enhanced Agents.jl
       'create_agent': 'agents.create_agent',
       'update_agent': 'agents.update_agent',
       'delete_agent': 'agents.delete_agent',
-      'get_agent_state': 'agents.get_agent_state',
       'get_agent': 'agents.get_agent',
       'list_agents': 'agents.list_agents',
-      'start_agent': 'agents.update_agent', // with status=active
-      'stop_agent': 'agents.update_agent',  // with status=inactive
+      'start_agent': 'agents.start_agent',
+      'stop_agent': 'agents.stop_agent',
+      'pause_agent': 'agents.pause_agent',
+      'resume_agent': 'agents.resume_agent',
+      'get_agent_status': 'agents.get_agent_status',
+      'execute_agent_task': 'agents.execute_task',
+      'get_agent_memory': 'agents.get_memory',
+      'set_agent_memory': 'agents.set_memory',
+      'clear_agent_memory': 'agents.clear_memory',
+      'register_ability': 'agents.register_ability',
+      'register_skill': 'agents.register_skill',
+
+      // Agent metrics commands
+      'get_agent_metrics': 'agents.get_metrics',
+      'record_agent_metric': 'agents.record_metric',
+      'reset_agent_metrics': 'agents.reset_metrics',
+
+      // Agent monitoring commands
+      'get_agent_health': 'agents.get_health_status',
+      'start_agent_monitor': 'agents.start_monitor',
+      'stop_agent_monitor': 'agents.stop_monitor',
+
+      // Swarm commands
+      'connect_swarm': 'agents.connect_swarm',
+      'disconnect_swarm': 'agents.disconnect_swarm',
+      'publish_to_swarm': 'agents.publish_to_swarm',
+      'subscribe_to_swarm': 'agents.subscribe_swarm',
 
       // Swarm commands
       'create_swarm': 'swarms.create_swarm',
@@ -532,12 +556,117 @@ class EnhancedJuliaBridge {
 
       case 'list_agents':
       case 'agents.list_agents':
+        return [
+          { id: 'agent1', name: 'Trading Agent', type: 1, status: 'RUNNING' },
+          { id: 'agent2', name: 'Research Agent', type: 99, status: 'STOPPED' },
+          { id: 'agent3', name: 'Portfolio Agent', type: 1, status: 'CREATED' }
+        ];
+
+      case 'get_agent_metrics':
+      case 'agents.get_metrics':
         return {
-          agents: [
-            { id: 'agent1', name: 'Trading Agent', type: 'trading', status: 'active' },
-            { id: 'agent2', name: 'Research Agent', type: 'research', status: 'inactive' },
-            { id: 'agent3', name: 'Portfolio Agent', type: 'portfolio', status: 'active' }
+          'agent1': {
+            'tasks_executed': {
+              'current': 42,
+              'type': 'COUNTER',
+              'history': [[new Date().toISOString(), 42]],
+              'last_updated': new Date().toISOString()
+            },
+            'memory_usage': {
+              'current': 256,
+              'type': 'GAUGE',
+              'history': [[new Date().toISOString(), 256]],
+              'last_updated': new Date().toISOString()
+            },
+            'execution_time': {
+              'type': 'HISTOGRAM',
+              'count': 10,
+              'min': 0.1,
+              'max': 2.5,
+              'mean': 0.8,
+              'median': 0.7,
+              'last_updated': new Date().toISOString()
+            }
+          }
+        };
+
+      case 'get_agent':
+      case 'agents.get_agent':
+        const agentId = params.id || 'agent1';
+        return {
+          id: agentId,
+          name: agentId === 'agent1' ? 'Trading Agent' : agentId === 'agent2' ? 'Research Agent' : 'Custom Agent',
+          type: agentId === 'agent1' ? 1 : agentId === 'agent2' ? 99 : 99, // Using enum values
+          status: agentId === 'agent1' ? 'RUNNING' : 'STOPPED',
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+          config: {
+            name: agentId === 'agent1' ? 'Trading Agent' : agentId === 'agent2' ? 'Research Agent' : 'Custom Agent',
+            type: agentId === 'agent1' ? 1 : agentId === 'agent2' ? 99 : 99,
+            abilities: ['ping', 'llm_chat'],
+            chains: [],
+            parameters: {
+              max_skills: 10,
+              update_interval: 60,
+              capabilities: ['basic', 'trading']
+            },
+            llm_config: {
+              provider: 'openai',
+              model: 'gpt-4o-mini',
+              temperature: 0.7,
+              max_tokens: 1024
+            },
+            memory_config: {
+              max_size: 1024,
+              retention_policy: 'lru'
+            },
+            max_task_history: 100
+          },
+          memory: {
+            'last_trade': { symbol: 'BTC-USD', price: 50000, timestamp: new Date().toISOString() },
+            'portfolio_value': 125000,
+            'risk_tolerance': 'medium'
+          },
+          task_history: [
+            {
+              timestamp: new Date(Date.now() - 3600000).toISOString(),
+              input: { ability: 'ping' },
+              output: { msg: 'pong' }
+            },
+            {
+              timestamp: new Date(Date.now() - 1800000).toISOString(),
+              input: { ability: 'llm_chat', prompt: 'Hello' },
+              output: { answer: 'Hello! How can I assist you today?' }
+            }
           ]
+        };
+
+      case 'get_agent_health':
+      case 'agents.get_health_status':
+        return {
+          'agent1': {
+            'agent_id': 'agent1',
+            'status': 'HEALTHY',
+            'message': 'Agent is healthy',
+            'timestamp': new Date().toISOString(),
+            'details': {}
+          },
+          'agent2': {
+            'agent_id': 'agent2',
+            'status': 'STOPPED',
+            'message': 'Agent is stopped',
+            'timestamp': new Date().toISOString(),
+            'details': {}
+          },
+          'agent3': {
+            'agent_id': 'agent3',
+            'status': 'WARNING',
+            'message': 'Agent may be stalled',
+            'timestamp': new Date().toISOString(),
+            'details': {
+              'time_since_update': '300 seconds'
+            }
+          }
         };
 
       case 'list_swarms':
@@ -627,15 +756,39 @@ class EnhancedJuliaBridge {
             config = configStr;
           }
 
+          // Map agent type to numeric enum value
+          let typeValue = 99; // Default to CUSTOM
+          if (agentType === 'trading') typeValue = 1; // TRADING
+          else if (agentType === 'monitor') typeValue = 2; // MONITOR
+          else if (agentType === 'arbitrage') typeValue = 3; // ARBITRAGE
+          else if (agentType === 'data_collection') typeValue = 4; // DATA_COLLECTION
+          else if (agentType === 'notification') typeValue = 5; // NOTIFICATION
+
           // Format parameters for the backend
           formattedParams = {
             name: name,
-            type: agentType,
-            max_memory: config.max_memory || 1024,
-            max_skills: config.max_skills || 10,
-            update_interval: config.update_interval || 60,
-            capabilities: config.capabilities || ['basic'],
-            recovery_attempts: 0
+            type: typeValue,
+            config: {
+              abilities: config.abilities || [],
+              chains: config.chains || [],
+              parameters: {
+                max_memory: config.max_memory || 1024,
+                max_skills: config.max_skills || 10,
+                update_interval: config.update_interval || 60,
+                capabilities: config.capabilities || ['basic'],
+                recovery_attempts: 0
+              },
+              llm_config: config.llm_config || {
+                provider: "openai",
+                model: "gpt-4o-mini",
+                temperature: 0.7,
+                max_tokens: 1024
+              },
+              memory_config: config.memory_config || {
+                max_size: 1000,
+                retention_policy: "lru"
+              }
+            }
           };
 
           // Pass through id if specified in config
@@ -644,14 +797,39 @@ class EnhancedJuliaBridge {
           }
         } else {
           // Already in object format
+          // Map agent type to numeric enum value
+          let typeValue = 99; // Default to CUSTOM
+          if (params.type === 'trading') typeValue = 1; // TRADING
+          else if (params.type === 'monitor') typeValue = 2; // MONITOR
+          else if (params.type === 'arbitrage') typeValue = 3; // ARBITRAGE
+          else if (params.type === 'data_collection') typeValue = 4; // DATA_COLLECTION
+          else if (params.type === 'notification') typeValue = 5; // NOTIFICATION
+          else if (typeof params.type === 'number') typeValue = params.type; // Already numeric
+
           formattedParams = {
             name: params.name,
-            type: params.type || 'generic',
-            max_memory: params.max_memory || 1024,
-            max_skills: params.max_skills || 10,
-            update_interval: params.update_interval || 60,
-            capabilities: params.capabilities || ['basic'],
-            recovery_attempts: params.recovery_attempts || 0
+            type: typeValue,
+            config: {
+              abilities: params.abilities || [],
+              chains: params.chains || [],
+              parameters: {
+                max_memory: params.max_memory || 1024,
+                max_skills: params.max_skills || 10,
+                update_interval: params.update_interval || 60,
+                capabilities: params.capabilities || ['basic'],
+                recovery_attempts: params.recovery_attempts || 0
+              },
+              llm_config: params.llm_config || {
+                provider: "openai",
+                model: "gpt-4o-mini",
+                temperature: 0.7,
+                max_tokens: 1024
+              },
+              memory_config: params.memory_config || {
+                max_size: 1000,
+                retention_policy: "lru"
+              }
+            }
           };
 
           // Pass through id if specified

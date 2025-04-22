@@ -151,9 +151,9 @@ function handle_command(request::Dict)
     @info "Received API request: $(JSON.json(request))"
     @info "Received command: $command with params: $params"
 
-    # Special case for swarm.list_algorithms command
-    if command == "swarm.list_algorithms"
-        @info "Handling swarm.list_algorithms command directly"
+    # Special case for swarm algorithm commands
+    if command == "swarm.list_algorithms" || command == "Swarm.get_available_algorithms"
+        @info "Handling swarm algorithm command directly: $command"
         try
             # Check if Swarms module is available
             if isdefined(Main.JuliaOS, :Swarms) && isdefined(Main.JuliaOS.Swarms, :list_algorithms)

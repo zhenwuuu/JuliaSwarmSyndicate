@@ -118,28 +118,68 @@ async function createAgent(juliaBridge) {
             });
         }
 
-        // Prepare the complete agent configuration
+        // Map agent type to AgentType enum value
+        const agentTypeMap = {
+            'julia_native': 1, // TRADING
+            'openai': 1,       // TRADING
+            'llama': 1,        // TRADING
+            'mistral': 1,      // TRADING
+            'claude': 1,       // TRADING
+            'trading': 1,      // TRADING
+            'arbitrage': 3,    // ARBITRAGE
+            'liquidity': 1,    // TRADING
+            'monitoring': 2,   // MONITOR
+            'data': 4,         // DATA_COLLECTION
+            'custom': 99       // CUSTOM
+        };
+
+        // Prepare the complete agent configuration for enhanced Agents.jl
         const agentConfig = {
-            id: uuidv4(),
             name: basicInfo.name,
-            version: advancedConfig.version,
-            agent_type: basicInfo.type,
-            capabilities: capabilitiesSelection.capabilities.length > 0
+            type: agentTypeMap[basicInfo.type] || 99, // Default to CUSTOM if not found
+            abilities: capabilitiesSelection.capabilities.length > 0
                 ? capabilitiesSelection.capabilities
                 : ['basic'],
-            max_memory: advancedConfig.max_memory,
-            max_skills: advancedConfig.max_skills,
-            update_interval: advancedConfig.update_interval,
-            network_configs: {},
-            status: "inactive"
+            chains: [], // Can be populated based on user selection in future
+            parameters: {
+                version: advancedConfig.version,
+                max_skills: advancedConfig.max_skills,
+                update_interval: advancedConfig.update_interval,
+                capabilities: capabilitiesSelection.capabilities
+            },
+            llm_config: {
+                provider: basicInfo.type === 'openai' ? 'openai' :
+                         basicInfo.type === 'llama' ? 'llama' :
+                         basicInfo.type === 'mistral' ? 'mistral' :
+                         basicInfo.type === 'claude' ? 'claude' : 'none',
+                model: basicInfo.type === 'openai' ? 'gpt-4o-mini' : 'default',
+                temperature: 0.7,
+                max_tokens: 1024
+            },
+            memory_config: {
+                max_size: advancedConfig.max_memory,
+                retention_policy: 'lru'
+            }
         };
+
+        // Get agent type name from the numeric value
+        const agentTypeNames = {
+            1: 'TRADING',
+            2: 'MONITOR',
+            3: 'ARBITRAGE',
+            4: 'DATA_COLLECTION',
+            5: 'NOTIFICATION',
+            99: 'CUSTOM'
+        };
+        const agentTypeName = agentTypeNames[agentConfig.type] || 'CUSTOM';
 
         // Show a summary and ask for confirmation
         console.log(chalk.cyan('\n╔═══════════ Agent Summary ════════════╗'));
         console.log(chalk.cyan(`║ Name: ${chalk.white(agentConfig.name)}${' '.repeat(Math.max(0, 30 - agentConfig.name.length))}║`));
-        console.log(chalk.cyan(`║ Type: ${chalk.white(agentConfig.agent_type)}${' '.repeat(Math.max(0, 30 - agentConfig.agent_type.length))}║`));
-        console.log(chalk.cyan(`║ Capabilities: ${chalk.white(agentConfig.capabilities.length)} selected${' '.repeat(Math.max(0, 15 - String(agentConfig.capabilities.length).length))}║`));
-        console.log(chalk.cyan(`║ Memory: ${chalk.white(agentConfig.max_memory)} MB${' '.repeat(Math.max(0, 25 - String(agentConfig.max_memory).length))}║`));
+        console.log(chalk.cyan(`║ Type: ${chalk.white(agentTypeName)}${' '.repeat(Math.max(0, 30 - agentTypeName.length))}║`));
+        console.log(chalk.cyan(`║ Abilities: ${chalk.white(agentConfig.abilities.length)} selected${' '.repeat(Math.max(0, 15 - String(agentConfig.abilities.length).length))}║`));
+        console.log(chalk.cyan(`║ Memory: ${chalk.white(agentConfig.memory_config.max_size)} MB${' '.repeat(Math.max(0, 25 - String(agentConfig.memory_config.max_size).length))}║`));
+        console.log(chalk.cyan(`║ LLM: ${chalk.white(agentConfig.llm_config.provider)}${' '.repeat(Math.max(0, 31 - agentConfig.llm_config.provider.length))}║`));
         console.log(chalk.cyan('╚═════════════════════════════════════════╝'));
 
         const { confirmCreate } = await inquirer.prompt([
@@ -178,13 +218,15 @@ async function createAgent(juliaBridge) {
                 console.log(chalk.green('\n✅ Agent created successfully!'));
                 console.log(chalk.cyan('\nAgent Details:'));
                 console.log(chalk.cyan('╔════════════════════════════════════════════════════════════╗'));
-                
-                const agentId = (result.data && result.data.id) || result.id || agentConfig.id;
+
+                // Extract agent ID from the result
+                const agentId = result.id || (result.data && result.data.id) || 'unknown';
                 console.log(chalk.cyan(`║  ID: ${chalk.white(agentId)}${' '.repeat(Math.max(0, 50 - String(agentId).length))}║`));
-                
+
                 console.log(chalk.cyan(`║  Name: ${chalk.white(agentConfig.name)}${' '.repeat(Math.max(0, 48 - agentConfig.name.length))}║`));
-                console.log(chalk.cyan(`║  Type: ${chalk.white(agentConfig.agent_type)}${' '.repeat(Math.max(0, 48 - agentConfig.agent_type.length))}║`));
-                console.log(chalk.cyan(`║  Status: ${chalk.yellow('inactive')}${' '.repeat(40)}║`));
+                console.log(chalk.cyan(`║  Type: ${chalk.white(agentTypeName)}${' '.repeat(Math.max(0, 48 - agentTypeName.length))}║`));
+                console.log(chalk.cyan(`║  Status: ${chalk.yellow('CREATED')}${' '.repeat(40)}║`));
+                console.log(chalk.cyan(`║  LLM Provider: ${chalk.white(agentConfig.llm_config.provider)}${' '.repeat(Math.max(0, 38 - agentConfig.llm_config.provider.length))}║`));
                 console.log(chalk.cyan('╚════════════════════════════════════════════════════════════╝'));
 
                 console.log(chalk.cyan('\nTip: ') + 'Use "Start Agent" from the Agent Management menu to activate this agent.');

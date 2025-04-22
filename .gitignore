@@ -8,7 +8,7 @@ typechain-types/
 .turbo/
 node_modules/
 
-# Generated runtime directories 
+# Generated runtime directories
 swarms/
 cli/data/agent-memories/
 cli/data/logs/
@@ -284,9 +284,15 @@ docs/_static/
 docs/_templates/
 docs/_themes/
 
-# Ignore all other .md files, except root README.md
+# Keep docs directory but exclude markdown files
+!/docs/
+/docs/**/*.md
+
+# Ignore all other .md files, except root README.md and Python wrapper README.md
 **/*.md
 !/README.md
+!/packages/python-wrapper/README.md
+!/packages/python-wrapper/docs/api_reference.md
 
 # Ignore specific root-level .md files
 /CONTRIBUTING.md

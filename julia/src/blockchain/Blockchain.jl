@@ -6,14 +6,26 @@ using Dates
 using Base64
 using Printf # Add Printf for formatting
 
+# Include submodules
+include("EthereumClient.jl")
+
+# Re-export from submodules
+using .EthereumClient
+
 export connect, getBalance, sendTransaction, getTransactionReceipt, isNodeHealthy
 export getChainId, getGasPrice, getTokenBalance, sendRawTransaction, eth_call
 export getTransactionCount, estimateGas, getDecimals # Added getDecimals export
 export SUPPORTED_CHAINS, getEndpoint
 
+# Export EthereumClient module
+export EthereumClient
+export EthereumConfig, EthereumProvider, create_provider
+export call_contract, send_transaction, get_balance, get_block, get_transaction
+export encode_function_call, decode_function_result, eth_to_wei, wei_to_eth
+
 # Supported blockchain networks
 const SUPPORTED_CHAINS = [
-    "ethereum", "polygon", "solana", "arbitrum", "optimism", 
+    "ethereum", "polygon", "solana", "arbitrum", "optimism",
     "base", "avalanche", "bsc", "fantom"
 ]
 
@@ -26,7 +38,7 @@ end
 function getEndpoint(network)
     # Convert network name to uppercase for environment variable
     env_var = "$(uppercase(network))_RPC_URL"
-    
+
     # Use specific environment variables for certain networks
     endpoint = if network == "ethereum"
         getenv("ETHEREUM_RPC_URL", "https://dry-capable-wildflower.quiknode.pro/2c509d168dcf3f71d49a4341f650c4b427be5b30")
@@ -49,12 +61,12 @@ function getEndpoint(network)
     else
         getenv(env_var, "")
     end
-    
+
     if endpoint == ""
         @warn "No endpoint provided for $network. Using default or mock endpoint."
         return "http://localhost:8545"  # Default fallback
     end
-    
+
     return endpoint
 end
 
@@ -63,12 +75,12 @@ function connect(; network="ethereum", endpoint="")
     if !(network in SUPPORTED_CHAINS)
         @warn "Unsupported network: $network. Supported networks: $(join(SUPPORTED_CHAINS, ", "))"
     end
-    
+
     # If no endpoint provided, get from environment
     if endpoint == ""
         endpoint = getEndpoint(network)
     end
-    
+
     # Test connection
     is_healthy = try
         isNodeHealthy(Dict("network" => network, "endpoint" => endpoint))
@@ -76,7 +88,7 @@ function connect(; network="ethereum", endpoint="")
         @warn "Failed to connect to $network at $endpoint: $e"
         false
     end
-    
+
     return Dict(
         "network" => network,
         "endpoint" => endpoint,
@@ -89,11 +101,11 @@ end
 function getBalance(address, connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             # Ethereum-compatible call
@@ -107,7 +119,7 @@ function getBalance(address, connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result")
                 # Convert hex result to decimal
@@ -132,7 +144,7 @@ function getBalance(address, connection)
                     "params" => [address]
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result") && haskey(result["result"], "value")
                 # Solana balance is in lamports (1 SOL = 10^9 lamports)
@@ -155,11 +167,11 @@ end
 function getChainId(connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             response = HTTP.post(
@@ -172,7 +184,7 @@ function getChainId(connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result")
                 hex_chain_id = result["result"]
@@ -198,11 +210,11 @@ end
 function getGasPrice(connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             response = HTTP.post(
@@ -215,7 +227,7 @@ function getGasPrice(connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result")
                 hex_gas_price = result["result"]
@@ -237,7 +249,7 @@ function getGasPrice(connection)
                     "params" => []
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result") && haskey(result["result"], "feeCalculator")
                 # Extract lamports per signature
@@ -510,11 +522,11 @@ end
 function sendRawTransaction(tx, connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             response = HTTP.post(
@@ -527,7 +539,7 @@ function sendRawTransaction(tx, connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result")
                 return result["result"]  # Transaction hash
@@ -545,7 +557,7 @@ function sendRawTransaction(tx, connection)
                     "params" => [tx, Dict("encoding" => "base64")]
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             if haskey(result, "result")
                 return result["result"]  # Transaction signature
@@ -565,11 +577,11 @@ end
 function sendTransaction(tx, connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     # This function assumes the transaction is already signed
     # In a real implementation, we would handle signing here or elsewhere
     return sendRawTransaction(tx, connection)
@@ -579,11 +591,11 @@ end
 function getTransactionReceipt(txHash, connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     if !connection["connected"]
         error("Not connected to network: $network")
     end
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             # Ethereum-compatible call
@@ -597,7 +609,7 @@ function getTransactionReceipt(txHash, connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             return get(result, "result", nothing)
         elseif network == "solana"
@@ -612,7 +624,7 @@ function getTransactionReceipt(txHash, connection)
                     "params" => [txHash, Dict("encoding" => "json")]
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             return get(result, "result", nothing)
         else
@@ -628,7 +640,7 @@ end
 function isNodeHealthy(connection)
     network = connection["network"]
     endpoint = connection["endpoint"]
-    
+
     try
         if network in ["ethereum", "polygon", "arbitrum", "optimism", "base", "bsc", "avalanche", "fantom"]
             # Ethereum-compatible health check
@@ -642,7 +654,7 @@ function isNodeHealthy(connection)
                     "id" => 1
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             return haskey(result, "result")
         elseif network == "solana"
@@ -657,7 +669,7 @@ function isNodeHealthy(connection)
                     "params" => []
                 ))
             )
-            
+
             result = JSON.parse(String(response.body))
             return get(result, "result", "") == "ok"
         else
@@ -670,4 +682,4 @@ function isNodeHealthy(connection)
     end
 end
 
-end # module 
+end # module

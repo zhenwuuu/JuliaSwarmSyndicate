@@ -71,7 +71,7 @@ The system features real implementations of agents, swarms, blockchain interacti
 - **Agent Specialization**: Specialized agents for specific tasks and domains with optimized performance.
 
 ### Swarm Intelligence
-- **Multiple Algorithms**: Real implementations of DE, PSO, GWO, ACO, GA, WOA algorithms with comprehensive configuration options.
+- **Multiple Algorithms**: Real implementations of DE, PSO, GWO, ACO, GA, WOA, DEPSO algorithms with comprehensive configuration options.
 - **Hybrid Algorithms**: Advanced hybrid algorithms (including DEPSO) combining multiple optimization techniques for improved performance and robustness.
 - **Multi-Objective Optimization**: Support for multi-objective optimization with Pareto front generation and solution selection using NSGA-II, weighted sum, and epsilon-constraint methods.
 - **Constraint Handling**: Sophisticated constraint handling mechanisms for real-world optimization problems with complex constraints using penalty functions and feasibility rules.
@@ -81,6 +81,11 @@ The system features real implementations of agents, swarms, blockchain interacti
 - **Visualization Tools**: Real-time visualization of optimization progress and solution quality.
 - **Benchmark Suite**: Comprehensive benchmark problems for algorithm comparison and performance evaluation.
 - **Custom Objective Functions**: Support for user-defined objective functions with complex evaluation logic.
+- **CLI Integration**: Seamless integration with the JuliaOS CLI for easy management of swarms and optimization tasks.
+- **Performance Optimization**: Tools for profiling and optimizing swarm algorithms with adaptive parameters and caching.
+- **Fault Tolerance**: Mechanisms for handling agent failures and ensuring swarm resilience with checkpointing and recovery.
+- **Security Features**: Authentication, authorization, and encryption for secure swarm communication.
+- **Swarm Coordination**: Advanced coordination mechanisms for multi-agent swarms with leader election and task allocation.
 
 ### Agent Skills & Specialization
 - **Skill System**: Advanced skill system with experience tracking, level progression, and skill dependencies.
@@ -923,6 +928,130 @@ The benchmarking feature provides:
 - Visualization of convergence behavior and performance comparisons
 - Parameter sensitivity analysis to optimize algorithm settings
 - Export of results in various formats (CSV, JSON, HTML)
+
+### Example: Multi-Agent Swarm Coordination
+
+JuliaOS provides advanced capabilities for coordinating multiple agents in a swarm. This example demonstrates how to create a swarm of agents that collaborate to solve a complex task.
+
+```bash
+# Start the CLI
+./scripts/run-cli.sh  # or node packages/cli/interactive.cjs
+
+# Select "🧬 Swarm Intelligence" from the main menu
+# Choose "Create Swarm"
+# Enter a name for your swarm (e.g., "CoordinationSwarm")
+# Select an algorithm (e.g., "PSO" for Particle Swarm Optimization)
+# Enter swarm configuration as JSON (e.g., {"max_iterations": 100})
+
+# Add agents to the swarm
+# Select "👤 Agent Management" from the main menu
+# Create several agents with different specializations
+# For each agent, select "Add to Swarm" and choose your swarm
+
+# Start the swarm
+# Select "🧬 Swarm Intelligence" from the main menu
+# Choose "Manage Swarms"
+# Select your swarm and choose "Start Swarm"
+
+# Allocate tasks to the swarm
+# Select "Task Management" from the swarm menu
+# Create a new task with parameters
+# The swarm will automatically allocate the task to the most suitable agent
+```
+
+You can also use the Python wrapper to coordinate a swarm of agents:
+
+```python
+import asyncio
+from juliaos import JuliaOS
+
+async def coordinate_swarm():
+    # Initialize JuliaOS
+    juliaos_client = JuliaOS(host="localhost", port=8052)
+    await juliaos_client.connect()
+
+    # Create a swarm
+    swarm = await juliaos_client.swarms.create_swarm(
+        name="CoordinationSwarm",
+        algorithm="PSO",
+        config={
+            "max_iterations": 100,
+            "coordination_mode": "hierarchical"
+        }
+    )
+    swarm_id = swarm["id"]
+
+    # Create agents with different specializations
+    agents = []
+    for i in range(5):
+        agent = await juliaos_client.agents.create_agent(
+            name=f"Agent-{i+1}",
+            agent_type="specialized",
+            config={
+                "specialization": ["explorer", "analyzer", "optimizer", "executor", "monitor"][i % 5],
+                "skill_level": 3 + i % 3
+            }
+        )
+        agents.append(agent)
+
+        # Add agent to swarm
+        await juliaos_client.swarms.add_agent_to_swarm(swarm_id, agent["id"])
+
+    # Start the swarm
+    await juliaos_client.swarms.start_swarm(swarm_id)
+
+    # Create a shared state for the swarm
+    await juliaos_client.swarms.update_shared_state(swarm_id, "target_position", [10.0, 20.0, 30.0])
+    await juliaos_client.swarms.update_shared_state(swarm_id, "obstacles", [[5.0, 5.0, 5.0], [15.0, 15.0, 15.0]])
+
+    # Allocate a task to the swarm
+    task = await juliaos_client.swarms.allocate_task(
+        swarm_id=swarm_id,
+        task={
+            "type": "exploration",
+            "parameters": {
+                "area": [0, 0, 0, 100, 100, 100],
+                "resolution": 5.0,
+                "priority": "high"
+            }
+        }
+    )
+
+    # Monitor task progress
+    for _ in range(10):
+        await asyncio.sleep(1)
+        status = await juliaos_client.swarms.get_task_status(swarm_id, task["task_id"])
+        print(f"Task status: {status['status']}")
+        print(f"Progress: {status['progress']}%")
+
+        # Get swarm metrics
+        metrics = await juliaos_client.swarms.get_swarm_metrics(swarm_id)
+        print(f"Active agents: {metrics['active_agents']}")
+        print(f"Completed subtasks: {metrics['completed_subtasks']}")
+
+    # Elect a leader for the swarm
+    leader = await juliaos_client.swarms.elect_leader(swarm_id)
+    print(f"Elected leader: {leader['leader_id']}")
+
+    # Stop the swarm
+    await juliaos_client.swarms.stop_swarm(swarm_id)
+
+    await juliaos_client.disconnect()
+
+# Run the coordination example
+asyncio.run(coordinate_swarm())
+```
+
+The swarm coordination features include:
+- Multi-agent collaboration with different agent specializations
+- Task allocation based on agent capabilities and current load
+- Shared state management for coordination and information sharing
+- Leader election for hierarchical coordination
+- Fault tolerance with automatic recovery from agent failures
+- Dynamic membership with agents joining and leaving the swarm
+- Communication patterns for efficient information exchange
+- Security features for authentication and authorization
+- Metrics collection for monitoring swarm performance
 
 ### Example: Using the Python Wrapper for LLM Integration
 
