@@ -364,12 +364,10 @@ That's it! This will build and start JuliaOS in Docker containers. The CLI will 
     pip install git+https://github.com/Juliaoscode/JuliaOS.git#subdirectory=packages/python-wrapper
 
     # Option 2: Install with LLM support
-    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix\ 
-#egg=juliaos[llm]&subdirectory=packages/python-wrapper"
+    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix#egg=juliaos[llm]&subdirectory=packages/python-wrapper"
 
     # Option 3: Install with Google ADK support
-    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix\ 
-#egg=juliaos[llm]&subdirectory=packages/python-wrapper"
+    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix#egg=juliaos[adk]&subdirectory=packages/python-wrapper"
 
     # Option 4: For development (after cloning the repository)
     cd packages/python-wrapper
@@ -427,6 +425,11 @@ That's it! This will build and start JuliaOS in Docker containers. The CLI will 
 
     Most providers offer free tiers that are sufficient for development and testing.
 
+    6. (if not using Docker) Build the project. Run:
+    ```bash
+    npm run build
+    ```
+
 ### Running JuliaOS
 
 #### Option 1: Using Docker (Recommended)
@@ -479,7 +482,7 @@ Alternatively, you can use the traditional two-terminal approach:
 **Terminal 1: Start the Julia Server**
 ```bash
 # Navigate to the julia directory
-cd julia
+cd julia/server
 
 # Run the server script
 julia --project=. julia_server.jl
@@ -492,7 +495,7 @@ julia --project=. julia_server.jl
 # If not, cd back to it
 
 # Run the interactive CLI script
-node packages/cli/interactive.cjs
+node scripts/interactive.cjs
 ```
 *You should now see the JuliaOS CLI menu with options for Agent Management, Swarm Intelligence, Blockchain Operations, and more.*
 
