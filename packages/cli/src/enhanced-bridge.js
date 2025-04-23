@@ -5,18 +5,62 @@
  * with improved error handling, connection status monitoring, and consistent command formatting.
  */
 
+const EventEmitter = require('events');
 const chalk = require('chalk');
 const ora = require('ora');
 
-class EnhancedJuliaBridge {
-  constructor(juliaBridge) {
+const { createConfig } = require('./utils/config');
+const { Logger, LOG_LEVELS } = require('./utils/logger');
+const { initializeMockRegistry } = require('./mocks');
+const { initializeImplementationRegistry } = require('./implementations');
+const {
+  JuliaBridgeError,
+  ConnectionError,
+  CommandError,
+  InitializationError,
+  BackendError,
+  MockImplementationError
+} = require('./errors/bridge-errors');
+
+class EnhancedJuliaBridge extends EventEmitter {
+  /**
+   * Create a new EnhancedJuliaBridge instance
+   * @param {Object} juliaBridge - The underlying JuliaBridge instance
+   * @param {Object} options - Configuration options
+   */
+  constructor(juliaBridge, options = {}) {
+    super();
+
+    // Initialize configuration
+    this.config = createConfig(options);
+
+    // Initialize logger
+    this.logger = new Logger({
+      level: this.config.logging.level,
+      prefix: this.config.logging.prefix,
+      enableColors: this.config.logging.enableColors,
+      timestamps: this.config.logging.timestamps
+    });
+
+    // Store the underlying JuliaBridge
     this.juliaBridge = juliaBridge;
+
+    // Initialize state
     this.isConnected = false;
+    this.isConnecting = false; // Flag to prevent concurrent connection checks
     this.lastConnectionCheck = 0;
-    this.connectionCheckInterval = 30000; // 30 seconds
-    this.commandMappings = this._initializeCommandMappings();
+    this.initialized = false;
     this.backendCapabilities = {};
-    this.initialized = false; // Start with initialized = false
+    this.backendCapabilitiesChecked = false;
+
+    // Initialize command mappings
+    this.commandMappings = this._initializeCommandMappings();
+
+    // Initialize implementation registry with real implementations
+    this.implementationRegistry = initializeImplementationRegistry(this.logger, this.juliaBridge);
+
+    // Initialize mock registry for fallbacks
+    this.mockRegistry = initializeMockRegistry(this.logger, this.config);
 
     // Initialize the bridge
     this._initialize();
@@ -27,18 +71,27 @@ class EnhancedJuliaBridge {
    */
   async _initialize() {
     try {
+      this.logger.info('Initializing EnhancedJuliaBridge');
+
       // Initialize the underlying JuliaBridge
       await this.juliaBridge.initialize();
       this.initialized = true;
-      console.log('EnhancedJuliaBridge initialized successfully');
+      this.logger.success('EnhancedJuliaBridge initialized successfully');
+      this.emit('initialized');
 
       // Check connection
       await this.checkConnection();
     } catch (error) {
-      console.error('Error initializing EnhancedJuliaBridge:', error.message);
+      this.logger.error('Error initializing EnhancedJuliaBridge:', error.message);
+      this.emit('initialization_error', error);
+
       // Even if initialization fails, we'll set initialized to true
       // so that we can fall back to mock implementations
       this.initialized = true;
+
+      throw new InitializationError(`Failed to initialize EnhancedJuliaBridge: ${error.message}`, {
+        originalError: error
+      });
     }
   }
 
@@ -57,7 +110,7 @@ class EnhancedJuliaBridge {
       'stop_agent': 'agents.stop_agent',
       'pause_agent': 'agents.pause_agent',
       'resume_agent': 'agents.resume_agent',
-      'get_agent_status': 'agents.get_agent_status',
+      'get_agent_status': 'agents.get_status',
       'execute_agent_task': 'agents.execute_task',
       'get_agent_memory': 'agents.get_memory',
       'set_agent_memory': 'agents.set_memory',
@@ -184,115 +237,186 @@ class EnhancedJuliaBridge {
   }
 
   /**
-   * Check if the backend is connected and available
+   * Checks the connection status to the Julia backend using multiple strategies.
+   * Emits 'connected' or 'disconnected' events on status change.
+   * @param {boolean} [force=false] - Force check even if within interval.
+   * @returns {Promise<boolean>} - Current connection status.
    */
-  async checkConnection() {
+  async checkConnection(force = false) {
     const now = Date.now();
+    if (!force && now - this.lastConnectionCheck < this.config.connection.checkInterval && this.isConnected) {
+      return this.isConnected; // Return cached status if within interval and connected
+    }
 
-    // Only check connection if it's been more than connectionCheckInterval since last check
-    if (now - this.lastConnectionCheck < this.connectionCheckInterval && this.isConnected) {
+    // Prevent concurrent connection checks
+    if (this.isConnecting) {
+      this.logger.debug('Connection check already in progress.');
+      // Wait briefly for ongoing check to potentially finish, or return current known status
+      await new Promise(resolve => setTimeout(resolve, 100));
       return this.isConnected;
     }
 
+    this.isConnecting = true;
     this.lastConnectionCheck = now;
+    const previousStatus = this.isConnected;
+    this.logger.info('Performing connection check...');
 
+    let currentStatus = false;
     try {
-      // First try the health endpoint
-      try {
-        console.log(chalk.blue('Checking health endpoint...'));
-        const healthResult = await this.juliaBridge.getHealth();
-        console.log(chalk.blue(`Health check result: ${JSON.stringify(healthResult)}`));
+      // Strategy 1: Primary health endpoint method
+      currentStatus = await this._tryHealthEndpoint();
 
-        // Check if the health result is valid
-        if (healthResult && typeof healthResult === 'object') {
-          // Handle both string and object responses
-          if (typeof healthResult === 'string') {
-            try {
-              const parsedHealth = JSON.parse(healthResult);
-              this.isConnected = parsedHealth && parsedHealth.status === 'healthy';
-            } catch (parseError) {
-              this.isConnected = healthResult.includes('healthy');
-            }
-          } else {
-            // Object response
-            this.isConnected = healthResult.status === 'healthy';
-          }
+      // Strategy 2: system.health command (if Strategy 1 failed)
+      if (!currentStatus) {
+        currentStatus = await this._trySystemHealthCommand();
+      }
 
-          if (this.isConnected) {
-            console.log(chalk.green('Health check passed: Server is healthy'));
-          } else {
-            console.log(chalk.yellow('Health check failed: Server is not healthy'));
+      // Strategy 3: Direct fetch (if Strategy 1 & 2 failed)
+      if (!currentStatus) {
+        currentStatus = await this._tryDirectFetch();
+      }
+
+      this.isConnected = currentStatus;
+
+      if (this.isConnected) {
+        this.logger.info(chalk.green('Connection check PASSED. Backend is healthy.'));
+        // Check capabilities only once after connecting
+        if (!this.backendCapabilitiesChecked) {
+          await this._checkBackendCapabilities();
+        }
+      } else {
+        this.logger.warn(chalk.yellow('Connection check FAILED. Backend is unreachable or unhealthy.'));
+      }
+
+      // Emit events only if status changed
+      if (previousStatus !== this.isConnected) {
+        this.emit(this.isConnected ? 'connected' : 'disconnected');
+        this.logger.info(`Connection status changed to: ${this.isConnected ? 'Connected' : 'Disconnected'}`);
+      }
+
+    } catch (error) {
+      // Catch unexpected errors during the checking process itself
+      this.logger.error(`Unexpected error during connection check: ${error.message}`, { error });
+      this.isConnected = false;
+      if (previousStatus !== this.isConnected) {
+        this.emit('disconnected');
+        this.logger.info(`Connection status changed to: Disconnected due to error.`);
+      }
+    } finally {
+      this.isConnecting = false;
+    }
+
+    return this.isConnected;
+  }
+
+  /**
+   * Tries the primary health endpoint of the underlying bridge.
+   * @returns {Promise<boolean>} - True if healthy, false otherwise.
+   * @private
+   */
+  async _tryHealthEndpoint() {
+    if (typeof this.juliaBridge.getHealth !== 'function') {
+      this.logger.debug('Underlying bridge does not have a getHealth method.');
+      return false;
+    }
+    try {
+      this.logger.debug(chalk.blue('Checking health endpoint via getHealth()...'));
+      const healthResult = await this.juliaBridge.getHealth();
+      this.logger.debug(chalk.blue(`Health check result: ${JSON.stringify(healthResult)}`));
+
+      if (healthResult && typeof healthResult === 'object') {
+        // Handle potential stringified JSON within the object
+        if (typeof healthResult === 'string') {
+          try {
+            const parsedHealth = JSON.parse(healthResult);
+            return parsedHealth && parsedHealth.status === 'healthy';
+          } catch (parseError) {
+            this.logger.warn(chalk.yellow('Health check result was a string, but failed to parse as JSON.'));
+            return healthResult.includes('healthy'); // Best effort guess
           }
         } else {
-          console.log(chalk.yellow('Health check failed: Invalid response format'));
-          this.isConnected = false;
+          // Assume standard object response
+          return healthResult.status === 'healthy';
         }
-      } catch (healthError) {
-        console.log(chalk.yellow(`Health check error: ${healthError.message}`));
-
-        // If health check fails, try a simple system health command
+      } else if (typeof healthResult === 'string') {
+        // Handle direct string response (less ideal)
         try {
-          console.log(chalk.blue('Trying system.health command...'));
-          const systemHealth = await this.juliaBridge.runJuliaCommand('system.health', {});
-          this.isConnected = systemHealth && systemHealth.success === true;
-
-          if (this.isConnected) {
-            console.log(chalk.green('System health check passed'));
-          } else {
-            console.log(chalk.yellow('System health check failed'));
-          }
-        } catch (cmdError) {
-          console.log(chalk.yellow(`System health command failed: ${cmdError.message}`));
-
-          // Try a direct fetch to the health endpoint as a last resort
-          try {
-            console.log(chalk.blue('Trying direct fetch to health endpoint...'));
-            const apiUrl = this.juliaBridge.config?.apiUrl;
-            if (!apiUrl) {
-              console.log(chalk.yellow('No API URL available for direct health check'));
-              this.isConnected = false;
-              return false;
-            }
-
-            // Try to extract the host and port from the API URL
-            const apiUrlObj = new URL(apiUrl);
-            const host = apiUrlObj.hostname;
-            // Try port 8052 first, then fall back to the original port
-            const port = 8052;
-            const healthUrl = `http://${host}:${port}/health`;
-
-            console.log(chalk.blue(`Fetching health from: ${healthUrl}`));
-            const response = await fetch(healthUrl);
-
-            if (response.ok) {
-              const healthData = await response.json();
-              this.isConnected = healthData && healthData.status === 'healthy';
-              console.log(chalk.blue(`Direct health check result: ${JSON.stringify(healthData)}`));
-
-              if (this.isConnected) {
-                console.log(chalk.green('Direct health check passed'));
-              } else {
-                console.log(chalk.yellow('Direct health check failed: Server not healthy'));
-              }
-            } else {
-              console.log(chalk.yellow(`Direct health check failed: ${response.status} ${response.statusText}`));
-              this.isConnected = false;
-            }
-          } catch (fetchError) {
-            console.log(chalk.yellow(`Direct health check error: ${fetchError.message}`));
-            this.isConnected = false;
-          }
+          const parsedHealth = JSON.parse(healthResult);
+          return parsedHealth && parsedHealth.status === 'healthy';
+        } catch (parseError) {
+          this.logger.debug(chalk.blue('Health check result was a non-JSON string. Checking content...'));
+          return healthResult.includes('healthy'); // Best effort guess
         }
+      } else {
+        this.logger.warn(chalk.yellow('Health check failed: Invalid response format from getHealth()'));
+        return false;
       }
+    } catch (healthError) {
+      this.logger.warn(chalk.yellow(`Health check via getHealth() failed: ${healthError.message}`));
+      return false;
+    }
+  }
 
-      if (this.isConnected && !this.backendCapabilitiesChecked) {
-        await this._checkBackendCapabilities();
+  /**
+   * Tries the system.health command via runJuliaCommand.
+   * @returns {Promise<boolean>} - True if healthy, false otherwise.
+   * @private
+   */
+  async _trySystemHealthCommand() {
+    if (typeof this.juliaBridge.runJuliaCommand !== 'function') {
+      this.logger.debug('Underlying bridge does not have a runJuliaCommand method.');
+      return false;
+    }
+    try {
+      this.logger.debug(chalk.blue('Trying system.health command...'));
+      // Use direct command to avoid loops
+      const systemHealth = await this.juliaBridge.runJuliaCommand('system.health', {});
+
+      // Check if the command itself succeeded AND the result indicates health
+      const isHealthy = systemHealth && (systemHealth.success === true || systemHealth.status === 'healthy');
+      this.logger.debug(`System health command result: ${JSON.stringify(systemHealth)}, Healthy: ${isHealthy}`);
+      return isHealthy;
+    } catch (cmdError) {
+      // Catch errors from executeCommand itself
+      this.logger.warn(chalk.yellow(`System health command failed: ${cmdError.message}`));
+      return false;
+    }
+  }
+
+  /**
+   * Tries a direct fetch to the health endpoint URL.
+   * @returns {Promise<boolean>} - True if healthy, false otherwise.
+   * @private
+   */
+  async _tryDirectFetch() {
+    const apiUrl = this.config.connection?.apiUrl || this.juliaBridge.config?.apiUrl;
+    if (!apiUrl) {
+      this.logger.warn(chalk.yellow('No API URL configured for direct health check.'));
+      return false;
+    }
+
+    try {
+      const apiUrlObj = new URL(apiUrl);
+      const host = apiUrlObj.hostname;
+      // Use configured health check port, fallback to API port if needed
+      const port = this.config.connection.fallbackPort || apiUrlObj.port;
+      const protocol = apiUrlObj.protocol === 'https:' ? 'https' : 'http'; // Respect protocol
+      const healthUrl = `${protocol}://${host}:${port}${this.config.connection.healthEndpoint}`;
+
+      this.logger.debug(chalk.blue(`Trying direct fetch to health endpoint: ${healthUrl}`));
+      // Use dynamic import for fetch to support environments where it's not global
+      const response = await fetch(healthUrl, { timeout: 5000 }); // Add timeout
+
+      if (response.ok) {
+        const healthData = await response.json();
+        this.logger.debug(chalk.blue(`Direct health check response: ${JSON.stringify(healthData)}`));
+        return healthData && healthData.status === 'healthy';
+      } else {
+        this.logger.warn(chalk.yellow(`Direct health check failed: ${response.status} ${response.statusText}`));
+        return false;
       }
-
-      return this.isConnected;
-    } catch (error) {
-      console.log(chalk.red(`Connection check error: ${error.message}`));
-      this.isConnected = false;
+    } catch (fetchError) {
+      this.logger.warn(chalk.yellow(`Direct health check error: ${fetchError.message}`));
       return false;
     }
   }
@@ -303,21 +427,25 @@ class EnhancedJuliaBridge {
   async _checkBackendCapabilities() {
     try {
       // Try to get system overview which should contain capability information
+      this.logger.debug('Checking backend capabilities');
       const systemOverview = await this.executeCommand('get_system_overview', {});
 
       if (systemOverview && systemOverview.modules) {
         this.backendCapabilities = systemOverview.modules;
+        this.logger.debug(`Backend capabilities: ${JSON.stringify(this.backendCapabilities)}`);
       }
 
       this.backendCapabilitiesChecked = true;
     } catch (error) {
       // If this fails, we'll just continue without capabilities information
-      console.log(chalk.yellow('Warning: Could not determine backend capabilities'));
+      this.logger.warn('Could not determine backend capabilities');
     }
   }
 
   /**
    * Check if a specific capability is supported by the backend
+   * @param {string} capability - Capability name
+   * @returns {boolean} - Whether the capability is supported
    */
   hasCapability(capability) {
     return this.backendCapabilities[capability] === true;
@@ -325,6 +453,7 @@ class EnhancedJuliaBridge {
 
   /**
    * Get a formatted connection status string
+   * @returns {string} - Formatted connection status string
    */
   getConnectionStatusString() {
     if (this.isConnected) {
@@ -335,1477 +464,379 @@ class EnhancedJuliaBridge {
   }
 
   /**
-   * Execute a command with standardized format and enhanced error handling
+   * Prepare command and parameters for execution
+   * @param {string} command - Command name
+   * @param {Object} params - Command parameters
+   * @returns {Object} - Prepared command and parameters
    */
-  async executeCommand(command, params, options = {}) {
-    const {
-      showSpinner = true,
-      spinnerText = `Executing ${command}...`,
-      fallbackToMock = true, // Default to true to allow mock implementations as fallback
-      maxRetries = 3,
-      retryDelay = 1000, // 1 second
-      useMockOnly = false // Set to false to try real implementation first
-    } = options;
-
+  _prepareCommand(command, params) {
     // Map the command to the standardized format
     const mappedCommand = this.commandMappings[command] || command;
 
+    // Clone params to avoid modifying the original
+    let formattedParams = { ...params };
+
+    // Special handling for agent creation
+    if (command === 'create_agent' || mappedCommand === 'agents.create_agent') {
+      formattedParams = this._formatAgentParams(formattedParams);
+    }
+
+    return { mappedCommand, formattedParams };
+  }
+
+  /**
+   * Format agent parameters for create_agent command
+   * @param {Object|Array} params - Agent parameters
+   * @returns {Object} - Formatted agent parameters
+   */
+  _formatAgentParams(params) {
+    this.logger.debug('Formatting parameters for create_agent:', params);
+
+    // Define agent type mapping
+    const AGENT_TYPES = {
+      'trading': 1,
+      'monitor': 2,
+      'arbitrage': 3,
+      'data_collection': 4,
+      'notification': 5,
+      'custom': 99 // Default
+    };
+
+    let name, agentTypeInput, configInput;
+
+    // Detect if params is old array format or new object format
+    if (Array.isArray(params) && params.length >= 2) {
+      [name, agentTypeInput, configInput] = params;
+      this.logger.debug('Detected array format for create_agent params.');
+    } else if (typeof params === 'object' && params !== null && params.name && params.type) {
+      name = params.name;
+      agentTypeInput = params.type;
+      // Config can be directly within params or nested under 'config'
+      configInput = params.config || params;
+      this.logger.debug('Detected object format for create_agent params.');
+    } else {
+      throw new JuliaBridgeError('Invalid parameters for create_agent. Expected [name, type, config?] or {name, type, ...config}.', { params });
+    }
+
+    let config = {};
+    // Parse config if it's a string (from array format)
+    if (typeof configInput === 'string') {
+      try {
+        config = JSON.parse(configInput);
+      } catch (e) {
+        this.logger.warn(`Could not parse config string for agent "${name}": ${configInput}`);
+        // Proceed with default config
+      }
+    } else if (typeof configInput === 'object' && configInput !== null) {
+      config = configInput; // Already an object
+    }
+
+    // Map agent type string to numeric enum value, default to CUSTOM
+    let typeValue = typeof agentTypeInput === 'number'
+      ? agentTypeInput
+      : (AGENT_TYPES[agentTypeInput?.toLowerCase()] ?? AGENT_TYPES['custom']);
+
+    // Construct the standardized parameters expected by the enhanced backend
+    const formattedParams = {
+      name: name,
+      type: typeValue,
+      config: { // Ensure nested config structure
+        abilities: config.abilities || [],
+        chains: config.chains || [],
+        parameters: {
+          max_memory: config.max_memory || config.parameters?.max_memory || 1024,
+          max_skills: config.max_skills || config.parameters?.max_skills || 10,
+          update_interval: config.update_interval || config.parameters?.update_interval || 60,
+          capabilities: config.capabilities || config.parameters?.capabilities || ['basic'],
+          recovery_attempts: config.recovery_attempts || config.parameters?.recovery_attempts || 0
+          // Add any other expected parameters with defaults
+        },
+        llm_config: config.llm_config || { // Provide defaults
+          provider: "openai",
+          model: "gpt-4o-mini",
+          temperature: 0.7,
+          max_tokens: 1024
+        },
+        memory_config: config.memory_config || { // Provide defaults
+          max_size: 1000,
+          retention_policy: "lru"
+        },
+        max_task_history: config.max_task_history || 100
+        // Add other config sections if needed
+      }
+    };
+
+    // Pass through id if specified in the original config/params
+    if (config.id || params?.id) {
+      formattedParams.id = config.id || params.id;
+      this.logger.debug(`Using provided ID for agent creation: ${formattedParams.id}`);
+    }
+
+    this.logger.debug(`Formatted parameters for ${this.commandMappings['create_agent']}: ${JSON.stringify(formattedParams)}`);
+    return formattedParams;
+  }
+
+  // Note: The _ensureConnection method has been removed as its functionality
+  // is now integrated directly into the executeCommand method for better error handling
+  // and more consistent behavior.
+
+  // Note: The _executeWithRetries method has been removed as its functionality
+  // is now integrated directly into the executeCommand method for better error handling
+  // and more consistent behavior.
+
+  /**
+   * Execute a command against the Julia backend with retry logic and mock fallback.
+   * Emits 'commandSuccess' or 'commandError' events.
+   *
+   * @param {string} command - The high-level command name (e.g., 'list_agents').
+   * @param {object|array} params - Parameters for the command.
+   * @param {object} [options={}] - Execution options.
+   * @param {boolean} [options.showSpinner=true] - Show CLI spinner.
+   * @param {string} [options.spinnerText] - Custom spinner text.
+   * @param {boolean} [options.fallbackToMock=true] - Use mock implementation if backend fails or is disconnected.
+   * @param {boolean} [options.useMockOnly=false] - Force use of mock implementation.
+   * @param {number} [options.maxRetries] - Override default max retries.
+   * @param {number} [options.retryDelay] - Override default retry delay.
+   * @returns {Promise<any>} - The result from the Julia backend or mock.
+   * @throws {JuliaBridgeError|ConnectionError|BackendError|MockImplementationError}
+   */
+  async executeCommand(command, params, options = {}) {
+    // Merge options with defaults
+    const execOptions = {
+      showSpinner: options.showSpinner !== false && this.config.ui.showSpinners,
+      spinnerText: options.spinnerText || `Executing ${command}...`,
+      fallbackToMock: options.fallbackToMock !== false && this.config.commands.fallbackToMock,
+      maxRetries: options.maxRetries || this.config.commands.maxRetries,
+      retryDelay: options.retryDelay || this.config.commands.retryDelay,
+      useMockOnly: options.useMockOnly || false,
+      originalCommand: command
+    };
+
+    // Prepare command and parameters
+    const { mappedCommand, formattedParams } = this._prepareCommand(command, params);
+
+    // Create spinner if needed
     let spinner = null;
-    if (showSpinner) {
-      spinner = ora(spinnerText).start();
+    if (execOptions.showSpinner) {
+      spinner = ora({
+        text: execOptions.spinnerText,
+        color: this.config.ui.spinnerColor
+      }).start();
+      execOptions.spinner = spinner;
     }
 
-    // If mock-only mode is requested, check if we have a mock implementation
-    if (useMockOnly) {
+    const stopSpinner = (method, text) => {
       if (spinner) {
-        spinner.info(`Using mock implementation for ${command}`);
+        spinner[method](text);
       }
-      return this._getMockImplementation(command, params);
-    }
+    };
 
-    // Check connection if needed
-    if (!this.isConnected) {
-      const connected = await this.checkConnection();
-      if (!connected) {
-        if (spinner) {
-          spinner.warn(`Backend not connected, using fallback implementation`);
-        }
-        console.log(chalk.yellow(`Backend not connected. Using fallback implementation for: ${command}`));
+    // Emit command start event
+    this.emit('command_start', { command, params });
 
-        if (fallbackToMock) {
-          return this._getMockImplementation(command, params);
-        } else {
-          if (spinner) {
-            spinner.fail(`Backend not connected and fallback disabled`);
-          }
-          throw new Error(`Backend not connected. Cannot execute command: ${command}`);
-        }
-      }
-    }
-
-    let lastError = null;
-    let retryCount = 0;
-
-    while (retryCount <= maxRetries) {
-      try {
-        // Execute the command
-        const result = await this.juliaBridge.runJuliaCommand(mappedCommand, params);
-
-        if (spinner) {
-          spinner.succeed(`${command} executed successfully`);
-        }
-
-        // Check for error in the result
-        if (result && result.success === false && result.error) {
-          if (spinner) {
-            spinner.fail(`Error from Julia server: ${result.error}`);
-          }
-          console.error(chalk.red(`Error executing ${command}: ${result.error}`));
-
-          // If fallback is enabled, try the mock implementation
-          if (fallbackToMock) {
-            console.log(chalk.yellow(`Falling back to mock implementation for ${command}`));
-            return this._getMockImplementation(command, params);
-          }
-
-          throw new Error(result.error);
-        }
-
-        // Check if the response is valid
-        if (!result) {
-          if (fallbackToMock) {
-            console.log(chalk.yellow(`No response received, falling back to mock implementation for ${command}`));
-            return this._getMockImplementation(command, params);
-          }
-          throw new Error(`No response received from Julia backend for command: ${command}`);
-        }
-
-        // Check if the response contains an error
-        if (result.success === false && result.error) {
-          console.error(chalk.red(`Error from Julia backend for command ${command}:`), result.error);
-
-          // If fallback is enabled, try the mock implementation
-          if (fallbackToMock) {
-            console.log(chalk.yellow(`Error in response, falling back to mock implementation for ${command}`));
-            return this._getMockImplementation(command, params);
-          }
-
-          // We return the response with the error so the caller can handle it
-          return result;
-        }
-
-        // Special handling for agent creation command
-        if (command === 'create_agent' || mappedCommand === 'agents.create_agent') {
-          // For agent creation, check if it's a success response with data
-          if (result.success === true && result.data) {
-            return result.data;
-          }
-          // If it has id or agent_id, it's a success (non-standard response format)
-          if (result.id || result.agent_id) {
-            return result;
-          }
-        }
-
-        // Extract data from the result if it exists
-        if (result && result.data) {
-          return result.data;
-        }
-
-        return result;
-      } catch (error) {
-        lastError = error;
-        retryCount++;
-
-        // If we've reached max retries, handle the error
-        if (retryCount > maxRetries) {
-          if (spinner) {
-            spinner.fail(`Error executing ${command}: ${error.message}`);
-          }
-
-          console.error(chalk.red(`Failed to execute ${command} after ${maxRetries} retries`));
-          console.error(chalk.red(`Error details: ${error.message}`));
-
-          // Log additional error details if available
-          if (error.stack) {
-            console.debug(chalk.gray(`Stack trace: ${error.stack}`));
-          }
-
-          // If fallback is enabled, try the mock implementation
-          if (fallbackToMock) {
-            console.log(chalk.yellow(`After ${maxRetries} retries, falling back to mock implementation for ${command}`));
-            return this._getMockImplementation(command, params);
-          }
-
-          throw error;
-        }
-
-        // Otherwise, retry after a delay
-        if (spinner) {
-          spinner.text = `Retrying ${command} (${retryCount}/${maxRetries}): ${error.message}`;
-        }
-
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, retryDelay * retryCount));
-      }
-    }
-  }
-
-  /**
-   * Get a mock implementation for a command
-   */
-  _getMockImplementation(command, params) {
-    console.log(chalk.blue(`Using mock implementation for ${command}`));
-
-    // Handle specific commands with mock implementations
-    switch (command) {
-      case 'list_algorithms':
-      case 'algorithms.list':
-        return {
-          algorithms: [
-            { id: 'differential_evolution', name: 'Differential Evolution', type: 'global_optimization' },
-            { id: 'particle_swarm', name: 'Particle Swarm Optimization', type: 'global_optimization' },
-            { id: 'genetic_algorithm', name: 'Genetic Algorithm', type: 'global_optimization' },
-            { id: 'simulated_annealing', name: 'Simulated Annealing', type: 'global_optimization' },
-            { id: 'nelder_mead', name: 'Nelder-Mead', type: 'local_optimization' },
-            { id: 'bfgs', name: 'BFGS', type: 'local_optimization' },
-            { id: 'gradient_descent', name: 'Gradient Descent', type: 'local_optimization' },
-            { id: 'newton', name: 'Newton\'s Method', type: 'local_optimization' }
-          ]
-        };
-
-      case 'swarm.list_algorithms':
-        return {
-          algorithms: [
-            {
-              id: 'SwarmPSO',
-              name: 'Particle Swarm Optimization',
-              description: 'A population-based optimization technique inspired by social behavior of bird flocking or fish schooling.'
-            },
-            {
-              id: 'SwarmGA',
-              name: 'Genetic Algorithm',
-              description: 'A search heuristic that mimics the process of natural selection.'
-            },
-            {
-              id: 'SwarmACO',
-              name: 'Ant Colony Optimization',
-              description: 'A probabilistic technique for solving computational problems which can be reduced to finding good paths through graphs.'
-            },
-            {
-              id: 'SwarmGWO',
-              name: 'Grey Wolf Optimizer',
-              description: 'A meta-heuristic algorithm inspired by the leadership hierarchy and hunting mechanism of grey wolves.'
-            },
-            {
-              id: 'SwarmWOA',
-              name: 'Whale Optimization Algorithm',
-              description: 'A nature-inspired meta-heuristic optimization algorithm that mimics the hunting behavior of humpback whales.'
-            },
-            {
-              id: 'SwarmDE',
-              name: 'Differential Evolution',
-              description: 'A stochastic population-based optimization algorithm for solving complex optimization problems.'
-            },
-            {
-              id: 'SwarmDEPSO',
-              name: 'Hybrid Differential Evolution and Particle Swarm Optimization',
-              description: 'A hybrid algorithm that combines the strengths of Differential Evolution and Particle Swarm Optimization.'
-            }
-          ]
-        };
-
-      case 'list_agents':
-      case 'agents.list_agents':
-        return [
-          { id: 'agent1', name: 'Trading Agent', type: 1, status: 'RUNNING' },
-          { id: 'agent2', name: 'Research Agent', type: 99, status: 'STOPPED' },
-          { id: 'agent3', name: 'Portfolio Agent', type: 1, status: 'CREATED' }
-        ];
-
-      case 'get_agent_metrics':
-      case 'agents.get_metrics':
-        return {
-          'agent1': {
-            'tasks_executed': {
-              'current': 42,
-              'type': 'COUNTER',
-              'history': [[new Date().toISOString(), 42]],
-              'last_updated': new Date().toISOString()
-            },
-            'memory_usage': {
-              'current': 256,
-              'type': 'GAUGE',
-              'history': [[new Date().toISOString(), 256]],
-              'last_updated': new Date().toISOString()
-            },
-            'execution_time': {
-              'type': 'HISTOGRAM',
-              'count': 10,
-              'min': 0.1,
-              'max': 2.5,
-              'mean': 0.8,
-              'median': 0.7,
-              'last_updated': new Date().toISOString()
-            }
-          }
-        };
-
-      case 'get_agent':
-      case 'agents.get_agent':
-        const agentId = params.id || 'agent1';
-        return {
-          id: agentId,
-          name: agentId === 'agent1' ? 'Trading Agent' : agentId === 'agent2' ? 'Research Agent' : 'Custom Agent',
-          type: agentId === 'agent1' ? 1 : agentId === 'agent2' ? 99 : 99, // Using enum values
-          status: agentId === 'agent1' ? 'RUNNING' : 'STOPPED',
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-          config: {
-            name: agentId === 'agent1' ? 'Trading Agent' : agentId === 'agent2' ? 'Research Agent' : 'Custom Agent',
-            type: agentId === 'agent1' ? 1 : agentId === 'agent2' ? 99 : 99,
-            abilities: ['ping', 'llm_chat'],
-            chains: [],
-            parameters: {
-              max_skills: 10,
-              update_interval: 60,
-              capabilities: ['basic', 'trading']
-            },
-            llm_config: {
-              provider: 'openai',
-              model: 'gpt-4o-mini',
-              temperature: 0.7,
-              max_tokens: 1024
-            },
-            memory_config: {
-              max_size: 1024,
-              retention_policy: 'lru'
-            },
-            max_task_history: 100
-          },
-          memory: {
-            'last_trade': { symbol: 'BTC-USD', price: 50000, timestamp: new Date().toISOString() },
-            'portfolio_value': 125000,
-            'risk_tolerance': 'medium'
-          },
-          task_history: [
-            {
-              timestamp: new Date(Date.now() - 3600000).toISOString(),
-              input: { ability: 'ping' },
-              output: { msg: 'pong' }
-            },
-            {
-              timestamp: new Date(Date.now() - 1800000).toISOString(),
-              input: { ability: 'llm_chat', prompt: 'Hello' },
-              output: { answer: 'Hello! How can I assist you today?' }
-            }
-          ]
-        };
-
-      case 'get_agent_health':
-      case 'agents.get_health_status':
-        return {
-          'agent1': {
-            'agent_id': 'agent1',
-            'status': 'HEALTHY',
-            'message': 'Agent is healthy',
-            'timestamp': new Date().toISOString(),
-            'details': {}
-          },
-          'agent2': {
-            'agent_id': 'agent2',
-            'status': 'STOPPED',
-            'message': 'Agent is stopped',
-            'timestamp': new Date().toISOString(),
-            'details': {}
-          },
-          'agent3': {
-            'agent_id': 'agent3',
-            'status': 'WARNING',
-            'message': 'Agent may be stalled',
-            'timestamp': new Date().toISOString(),
-            'details': {
-              'time_since_update': '300 seconds'
-            }
-          }
-        };
-
-      case 'list_swarms':
-      case 'swarms.list_swarms':
-        return {
-          swarms: [
-            { id: 'swarm1', name: 'Trading Swarm', algorithm: 'SwarmPSO', status: 'active', agents: 5 },
-            { id: 'swarm2', name: 'Research Swarm', algorithm: 'SwarmGA', status: 'inactive', agents: 3 },
-            { id: 'swarm3', name: 'Portfolio Swarm', algorithm: 'SwarmDE', status: 'active', agents: 7 }
-          ]
-        };
-
-      case 'get_dex_list':
-      case 'dex.list':
-        return {
-          dexes: [
-            { id: 'uniswap', name: 'Uniswap V3', chain: 'ethereum', type: 'amm' },
-            { id: 'sushiswap', name: 'SushiSwap', chain: 'ethereum', type: 'amm' },
-            { id: 'pancakeswap', name: 'PancakeSwap', chain: 'bsc', type: 'amm' },
-            { id: 'curve', name: 'Curve', chain: 'ethereum', type: 'stableswap' },
-            { id: 'balancer', name: 'Balancer', chain: 'ethereum', type: 'weighted' },
-            { id: 'trader_joe', name: 'Trader Joe', chain: 'avalanche', type: 'amm' },
-            { id: 'quickswap', name: 'QuickSwap', chain: 'polygon', type: 'amm' }
-          ]
-        };
-
-      case 'get_system_overview':
-      case 'metrics.get_system_overview':
-        return {
-          cpu_usage: { percent: 25.5, cores: 8, threads: 16 },
-          memory_usage: { total: 16384, used: 4096, percent: 25.0 },
-          storage: { total: 512000, used: 128000, percent: 25.0 },
-          uptime: { seconds: 3600, formatted: '1 hour' },
-          active_agents: 2,
-          active_swarms: 1,
-          pending_tasks: 0,
-          timestamp: new Date().toISOString()
-        };
-
-      // Add more mock implementations as needed
-
-      default:
-        // Generic success response for commands without specific mock implementations
-        return {
-          success: true,
-          message: `Mock implementation for ${command}`,
-          timestamp: new Date().toISOString()
-        };
-    }
-  }
-
-  /**
-   * Run a Julia command with proper error handling
-   */
-  async runJuliaCommand(command, params) {
     try {
-      // Check if the bridge is initialized
-      if (!this.initialized) {
-        console.error(chalk.red('Error: JuliaBridge not initialized.'));
-        throw new Error('JuliaBridge not initialized. Cannot execute command: ' + command);
+      // --- Mock Only Execution ---
+      if (execOptions.useMockOnly) {
+        stopSpinner('info', `Using mock implementation for ${command} (forced)`);
+        try {
+          const mockResult = await this.mockRegistry.execute(command, formattedParams);
+          this.emit('command_success', { command, params, result: mockResult, source: 'mock' });
+          return mockResult;
+        } catch (mockError) {
+          stopSpinner('fail', `Mock implementation error for ${command}: ${mockError.message}`);
+          this.emit('command_error', { command, params, error: mockError, source: 'mock' });
+          throw mockError; // Re-throw mock error
+        }
       }
 
-      // Map the command to the standardized format
-      const mappedCommand = this.commandMappings[command] || command;
-      console.log(chalk.blue(`Running Julia command: ${mappedCommand}`));
-      console.log(chalk.blue(`With parameters: ${JSON.stringify(params, null, 2)}`));
-
-      // Special handling for agent creation
-      if (command === 'create_agent' || mappedCommand === 'agents.create_agent') {
-        // Format parameters correctly for the backend
-        let formattedParams;
-
-        // Check if params is an array (old format) or object (new format)
-        if (Array.isArray(params)) {
-          // Extract parameters from array
-          const [name, agentType, configStr] = params;
-          let config = {};
-
-          // Parse config if it's a string
-          if (typeof configStr === 'string') {
-            try {
-              config = JSON.parse(configStr);
-            } catch (e) {
-              console.log(chalk.yellow(`Warning: Could not parse config string: ${configStr}`));
+      // --- Use Real Implementation If Available ---
+      if (this.implementationRegistry.has(command) && !execOptions.useMockOnly) {
+        try {
+          stopSpinner('info', `Using real implementation for ${command}`);
+          const result = await this.implementationRegistry.execute(command, formattedParams);
+          stopSpinner('succeed', `${command} executed successfully.`);
+          this.emit('command_success', { command, params, result, source: 'implementation' });
+          return result;
+        } catch (error) {
+          // If real implementation fails and not connected, continue to connection check
+          // Otherwise, handle the error based on fallback settings
+          if (this.isConnected || error instanceof BackendError) {
+            if (execOptions.fallbackToMock) {
+              this.logger.warn(`Real implementation failed for ${command}, falling back to mock.`);
+              stopSpinner('warn', `Real implementation failed, using mock fallback.`);
+              try {
+                const mockResult = await this.mockRegistry.execute(command, formattedParams);
+                this.emit('command_success', { command, params, result: mockResult, source: 'mock-fallback' });
+                return mockResult;
+              } catch (mockError) {
+                stopSpinner('fail', `Mock fallback also failed for ${command}: ${mockError.message}`);
+                this.emit('command_error', { command, params, error: mockError, source: 'mock-fallback' });
+                throw mockError;
+              }
+            } else {
+              // No fallback, re-throw the error
+              stopSpinner('fail', `Error executing ${command}: ${error.message}`);
+              this.emit('command_error', { command, params, error, source: 'implementation' });
+              throw error;
             }
-          } else if (typeof configStr === 'object') {
-            config = configStr;
+          }
+          // If not connected, continue to connection check below
+          this.logger.warn(`Implementation failed, checking connection: ${error.message}`);
+        }
+      }
+
+      // --- Check Connection (unless using mock only) ---
+      if (!this.isConnected) {
+        const connected = await this.checkConnection(); // Attempt connection if not already connected
+        if (!connected) {
+          if (execOptions.fallbackToMock) {
+            stopSpinner('warn', `Backend not connected for ${command}, using mock fallback.`);
+            this.logger.warn(`Backend not connected. Using mock fallback for: ${command}`);
+            try {
+              const mockResult = await this.mockRegistry.execute(command, formattedParams);
+              this.emit('command_success', { command, params, result: mockResult, source: 'mock' });
+              return mockResult;
+            } catch (mockError) {
+              stopSpinner('fail', `Mock fallback error for ${command}: ${mockError.message}`);
+              this.emit('command_error', { command, params, error: mockError, source: 'mock' });
+              throw mockError;
+            }
+          } else {
+            stopSpinner('fail', `Backend not connected for ${command}, fallback disabled.`);
+            const connError = new ConnectionError(`Backend not connected. Cannot execute command: ${command}`);
+            this.emit('command_error', { command, params, error: connError, source: 'connection' });
+            throw connError;
+          }
+        }
+        // If checkConnection succeeded, continue to normal execution
+        stopSpinner('info', `Connection established, executing ${command}...`); // Update spinner if needed
+      }
+
+      // --- Execute with Retries ---
+      let lastError = null;
+      for (let attempt = 0; attempt <= execOptions.maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            stopSpinner('info', `Retrying ${command} (attempt ${attempt}/${execOptions.maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, execOptions.retryDelay * attempt));
           }
 
-          // Map agent type to numeric enum value
-          let typeValue = 99; // Default to CUSTOM
-          if (agentType === 'trading') typeValue = 1; // TRADING
-          else if (agentType === 'monitor') typeValue = 2; // MONITOR
-          else if (agentType === 'arbitrage') typeValue = 3; // ARBITRAGE
-          else if (agentType === 'data_collection') typeValue = 4; // DATA_COLLECTION
-          else if (agentType === 'notification') typeValue = 5; // NOTIFICATION
+          this.logger.debug(`Executing command: ${mappedCommand} (Attempt ${attempt + 1})`, { params: formattedParams });
+          // Actual call to the underlying bridge
+          const result = await this.juliaBridge.runJuliaCommand(mappedCommand, formattedParams);
+          this.logger.debug(`Raw result from ${mappedCommand}:`, { result });
 
-          // Format parameters for the backend
-          formattedParams = {
-            name: name,
-            type: typeValue,
-            config: {
-              abilities: config.abilities || [],
-              chains: config.chains || [],
-              parameters: {
-                max_memory: config.max_memory || 1024,
-                max_skills: config.max_skills || 10,
-                update_interval: config.update_interval || 60,
-                capabilities: config.capabilities || ['basic'],
-                recovery_attempts: 0
-              },
-              llm_config: config.llm_config || {
-                provider: "openai",
-                model: "gpt-4o-mini",
-                temperature: 0.7,
-                max_tokens: 1024
-              },
-              memory_config: config.memory_config || {
-                max_size: 1000,
-                retention_policy: "lru"
-              }
-            }
-          };
+          // --- Process Result ---
+          // Check for explicit backend error structure ({ success: false, error: '...' })
+          if (result && result.success === false && result.error) {
+            throw new BackendError(result.error, { command, mappedCommand, params: formattedParams, backendResponse: result });
+          }
+          // Check for other potential implicit error formats
+          if (result && result.error && !result.success) {
+            throw new BackendError(result.error.message || result.error, { command, mappedCommand, params: formattedParams, backendResponse: result });
+          }
 
-          // Pass through id if specified in config
-          if (config.id) {
-            formattedParams.id = config.id;
+          // Handle non-response or null result (might indicate an issue)
+          if (result === null || typeof result === 'undefined') {
+            this.logger.warn(`Received null or undefined response from ${mappedCommand}.`);
+            // Let's consider it a retryable issue for now
+            throw new JuliaBridgeError(`Null or undefined response received from ${mappedCommand}`, { command, mappedCommand, params: formattedParams });
+          }
+
+          // Successful execution
+          stopSpinner('succeed', `${command} executed successfully.`);
+          // Extract data if structure is { success: true, data: ... }
+          const finalResult = (result && result.success === true && typeof result.data !== 'undefined') ? result.data : result;
+          this.emit('command_success', { command, params: formattedParams, result: finalResult, source: 'backend' });
+          return finalResult;
+
+        } catch (error) {
+          lastError = error; // Store error for potential re-throw or fallback
+          this.logger.warn(`Attempt ${attempt + 1} for ${command} failed: ${error.message}`);
+
+          // If it's a backend error, log more details
+          if (error instanceof BackendError) {
+            this.logger.error(`Backend error executing ${command}: ${error.message}`, error.details);
+            // Backend errors are still retryable in this implementation
+          }
+
+          // If max retries reached, break loop and handle below
+          if (attempt >= execOptions.maxRetries) {
+            this.logger.error(`Command ${command} failed after ${execOptions.maxRetries + 1} attempts.`);
+            break; // Exit retry loop
+          }
+          // Update spinner text for retry
+          stopSpinner('info', `Retrying ${command} (${attempt + 1}/${execOptions.maxRetries}): ${error.message}`);
+        }
+      } // End retry loop
+
+      // --- Handle Failure After Retries ---
+      if (lastError) {
+        stopSpinner('fail', `Error executing ${command} after retries: ${lastError.message}`);
+        this.logger.error(`Failed to execute ${command} after ${execOptions.maxRetries} retries. Last error: ${lastError.message}`);
+
+        if (execOptions.fallbackToMock) {
+          this.logger.warn(`Falling back to mock implementation for ${command} after failed backend attempts.`);
+          stopSpinner('info', `Falling back to mock for ${command}...`); // Update spinner
+          try {
+            const mockResult = await this.mockRegistry.execute(command, formattedParams);
+            this.emit('command_success', { command, params, result: mockResult, source: 'mock-fallback' });
+            stopSpinner('warn', `Used mock fallback for ${command}.`); // Indicate mock was used
+            return mockResult;
+          } catch (mockError) {
+            // If mock fails too, throw the mock error
+            stopSpinner('fail', `Mock fallback also failed for ${command}: ${mockError.message}`);
+            this.emit('command_error', { command, params, error: mockError, source: 'mock-fallback' });
+            throw mockError;
           }
         } else {
-          // Already in object format
-          // Map agent type to numeric enum value
-          let typeValue = 99; // Default to CUSTOM
-          if (params.type === 'trading') typeValue = 1; // TRADING
-          else if (params.type === 'monitor') typeValue = 2; // MONITOR
-          else if (params.type === 'arbitrage') typeValue = 3; // ARBITRAGE
-          else if (params.type === 'data_collection') typeValue = 4; // DATA_COLLECTION
-          else if (params.type === 'notification') typeValue = 5; // NOTIFICATION
-          else if (typeof params.type === 'number') typeValue = params.type; // Already numeric
-
-          formattedParams = {
-            name: params.name,
-            type: typeValue,
-            config: {
-              abilities: params.abilities || [],
-              chains: params.chains || [],
-              parameters: {
-                max_memory: params.max_memory || 1024,
-                max_skills: params.max_skills || 10,
-                update_interval: params.update_interval || 60,
-                capabilities: params.capabilities || ['basic'],
-                recovery_attempts: params.recovery_attempts || 0
-              },
-              llm_config: params.llm_config || {
-                provider: "openai",
-                model: "gpt-4o-mini",
-                temperature: 0.7,
-                max_tokens: 1024
-              },
-              memory_config: params.memory_config || {
-                max_size: 1000,
-                retention_policy: "lru"
-              }
-            }
-          };
-
-          // Pass through id if specified
-          if (params.id) {
-            formattedParams.id = params.id;
-          }
+          // No fallback, emit and throw the last error from backend interaction
+          this.emit('command_error', { command, params: formattedParams, error: lastError, source: 'backend' });
+          throw lastError;
         }
-
-        console.log(chalk.blue(`Formatted parameters for agent creation: ${JSON.stringify(formattedParams, null, 2)}`));
-
-        // Use the formatted parameters
-        params = formattedParams;
+      } else {
+        // Should not happen if loop finishes, but handle defensively
+        const unknownError = new JuliaBridgeError(`Command ${command} failed with no specific error after retries.`);
+        stopSpinner('fail', `Command ${command} failed with no specific error.`);
+        this.emit('command_error', { command, params: formattedParams, error: unknownError, source: 'unknown' });
+        throw unknownError;
       }
 
-      // Try to execute the command through the JuliaBridge
-      try {
-        // Execute the command
-        const response = await this.juliaBridge.runJuliaCommand(mappedCommand, params);
-        return response;
-      } catch (cmdError) {
-        console.log(chalk.yellow(`Error executing ${mappedCommand} via runJuliaCommand: ${cmdError.message}`));
-        console.log(chalk.yellow('Falling back to direct HTTP request...'));
-
-        // Try direct HTTP request to the API endpoint
-        try {
-          const apiUrl = this.juliaBridge.config?.apiUrl;
-          if (!apiUrl) {
-            throw new Error('No API URL available for direct HTTP request');
-          }
-
-          console.log(chalk.blue(`Making direct HTTP request to ${apiUrl}`));
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              command: mappedCommand,
-              params: params
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const result = await response.json();
-          console.log(chalk.green('Direct HTTP request successful'));
-          return result;
-        } catch (httpError) {
-          console.log(chalk.red(`Error with direct HTTP request: ${httpError.message}`));
-          throw httpError;
-        }
-      }
-
-      return null; // This should never be reached due to the try/catch structure
     } catch (error) {
-      console.error(chalk.red(`Error executing Julia command ${command}:`), error.message);
-      return { success: false, error: error.message };
+      // Catch errors thrown outside the retry loop (e.g., initial connection errors, mock errors)
+      // Ensure the error is one of our custom types if possible
+      const finalError = error instanceof JuliaBridgeError ? error : new JuliaBridgeError(`Unhandled error during executeCommand: ${error.message}`, { originalError: error });
+
+      this.logger.error(`Critical error executing ${command}: ${finalError.message}`, finalError.details);
+      stopSpinner('fail', `Critical error: ${finalError.message}`);
+      // Avoid emitting duplicate errors if already emitted
+      if (!this.eventNames().includes('command_error') || !finalError.details?.emitted) {
+        finalError.details = { ...finalError.details, emitted: true };
+        this.emit('command_error', { command, params, error: finalError, source: 'critical' });
+      }
+      throw finalError;
     }
   }
-
   /**
-   * Get a mock result for a command when the backend is not available
-   * This function is deprecated and should not be used.
+   * Gracefully shuts down the bridge connection if applicable.
+   * @returns {Promise<void>}
    */
-  _getMockResult(command, params) {
-    console.error(chalk.red(`Error: Mock implementations are not available. The command ${command} requires a real implementation.`));
-    throw new Error(`Mock implementations are not available. The command ${command} requires a real implementation.`);
-    // Basic mock implementations for common commands
-    const mockImplementations = {
-      'list_agents': () => ({
-        agents: [
-          { id: 'mock-agent-1', name: 'Mock Trading Agent', type: 'Trading', status: 'active' },
-          { id: 'mock-agent-2', name: 'Mock Analysis Agent', type: 'Analysis', status: 'inactive' }
-        ]
-      }),
-
-      'create_agent': (params) => ({
-        id: `mock-${Date.now().toString(36)}`,
-        name: params.name || 'Mock Agent',
-        type: params.type || 'generic',
-        status: 'initialized'
-      }),
-
-      'list_swarms': () => ({
-        swarms: [
-          { id: 'mock-swarm-1', name: 'Mock Trading Swarm', type: 'Trading', status: 'active', size: 5 },
-          { id: 'mock-swarm-2', name: 'Mock Analysis Swarm', type: 'Analysis', status: 'inactive', size: 3 }
-        ]
-      }),
-
-      'create_swarm': (params) => ({
-        id: `mock-swarm-${Date.now().toString(36)}`,
-        name: params.name || 'Mock Swarm',
-        type: params.type || 'generic',
-        status: 'initialized',
-        size: params.size || 5
-      }),
-
-      'check_system_health': () => ({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        uptime_seconds: 3600,
-        metrics: {
-          memory_usage_percent: 25,
-          cpu_usage_percent: 10,
-          active_agents: 2,
-          active_swarms: 1
-        }
-      }),
-
-      // Cross-Chain Hub mock implementations
-      'get_available_chains': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1, rpc_url: 'https://rpc.ankr.com/eth' },
-          { id: 'solana', name: 'Solana', chainId: 1, rpc_url: 'https://api.mainnet-beta.solana.com' },
-          { id: 'polygon', name: 'Polygon', chainId: 137, rpc_url: 'https://polygon-rpc.com' },
-          { id: 'avalanche', name: 'Avalanche', chainId: 43114, rpc_url: 'https://api.avax.network/ext/bc/C/rpc' },
-          { id: 'bsc', name: 'Binance Smart Chain', chainId: 56, rpc_url: 'https://bsc-dataseed.binance.org' }
-        ]
-      }),
-
-      'get_available_tokens': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true },
-          { symbol: 'WETH', name: 'Wrapped Ethereum', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, is_native: false }
-        ]
-      }),
-
-      'bridge_tokens_wormhole': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        attestation: `0x${Math.random().toString(16).substring(2, 130)}`,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'solana',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.005,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'solana' ? 'SOL' : 'GAS'),
-          usd_value: 15.75
-        },
-        estimated_completion_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_wormhole': (params) => {
-        // Generate a deterministic status based on the transaction hash
-        const txHash = params.transactionHash || '';
-        const hashSum = txHash.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'solana' : 'ethereum',
-          initiated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          attestation: status !== 'pending' ? `0x${Math.random().toString(16).substring(2, 130)}` : undefined,
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 10 : 5) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'Bridge.get_transaction_details': (params) => {
-        const txHash = params[0] || '';
-        const chain = params[1] || 'ethereum';
-
-        // Generate a deterministic status based on the transaction hash
-        const hashSum = txHash.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        const targetChain = chain === 'ethereum' ? 'solana' : 'ethereum';
-        const tokens = ['USDC', 'USDT', 'ETH', 'SOL', 'MATIC', 'AVAX', 'BNB'];
-        const tokenIndex = hashSum % tokens.length;
-        const tokenSymbol = tokens[tokenIndex];
-
-        const tokenNames = {
-            'USDC': 'USD Coin',
-            'USDT': 'Tether USD',
-            'ETH': 'Ethereum',
-            'SOL': 'Solana',
-            'MATIC': 'Polygon',
-            'AVAX': 'Avalanche',
-            'BNB': 'Binance Coin'
-        };
-
-        const tokenName = tokenNames[tokenSymbol];
-        const amount = Math.floor(Math.random() * 1000) + 100;
-        const usdValue = tokenSymbol === 'USDC' || tokenSymbol === 'USDT' ? amount : amount * (Math.random() * 10 + 1);
-
-        return {
-          success: true,
-          transaction: {
-            type: 'Bridge',
-            status: status,
-            timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-            source_chain: chain,
-            target_chain: targetChain,
-            token_symbol: tokenSymbol,
-            token_name: tokenName,
-            amount: amount,
-            usd_value: usdValue,
-            tx_hash: txHash,
-            target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : null,
-            from_address: `0x${Math.random().toString(16).substring(2, 42)}`,
-            to_address: `0x${Math.random().toString(16).substring(2, 42)}`,
-            fee: {
-              amount: Math.random() * 0.1,
-              token: chain === 'ethereum' ? 'ETH' : (chain === 'polygon' ? 'MATIC' : (chain === 'solana' ? 'SOL' : 'GAS')),
-              usd_value: Math.random() * 50,
-              gas_used: Math.floor(Math.random() * 1000000),
-              gas_price: `${(Math.random() * 100).toFixed(2)} Gwei`
-            },
-            bridge_info: {
-              protocol: 'wormhole',
-              tracking_id: `0x${Math.random().toString(16).substring(2, 66)}`,
-              estimated_time: status === 'pending' ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null,
-              progress: status !== 'completed' ? {
-                current_step: status === 'pending' ? 1 : 2,
-                total_steps: 3,
-                description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-                percentage: status === 'pending' ? 33 : 66
-              } : null
-            },
-            explorer_links: [
-              {
-                name: `${chain.charAt(0).toUpperCase() + chain.slice(1)} Explorer`,
-                url: `https://${chain === 'ethereum' ? 'etherscan.io' : (chain === 'polygon' ? 'polygonscan.com' : 'explorer.solana.com')}/tx/${txHash}`
-              }
-            ],
-            additional_info: {
-              'Network Fee': `${(Math.random() * 10).toFixed(2)} Gwei`,
-              'Confirmation Blocks': Math.floor(Math.random() * 50),
-              'Bridge Fee': `${(Math.random() * 0.5).toFixed(2)}%`
-            }
-          }
-        };
-      },
-
-      'Bridge.check_status_by_tx_hash': (params) => {
-        const txHash = params[0] || '';
-        const chain = params[1] || 'ethereum';
-
-        // Generate a deterministic status based on the transaction hash
-        const hashSum = txHash.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        const targetChain = chain === 'ethereum' ? 'solana' : 'ethereum';
-
-        return {
-          success: true,
-          status: {
-            status: status,
-            protocol: 'wormhole',
-            source_chain: chain,
-            target_chain: targetChain,
-            token_symbol: 'USDC',
-            amount: '100',
-            source_tx_hash: txHash,
-            initiated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-            progress: status !== 'completed' ? {
-              current_step: status === 'pending' ? 1 : 2,
-              total_steps: 3,
-              description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-              percentage: status === 'pending' ? 33 : 66
-            } : null,
-            next_steps: status === 'pending' ? 'Wait for source chain confirmation' :
-                      (status === 'confirmed' ? 'Wait for target chain confirmation' :
-                      'Transaction completed successfully'),
-            attestation: status !== 'pending' ? `0x${Math.random().toString(16).substring(2, 130)}` : null,
-            completed_at: status === 'completed' ? new Date().toISOString() : null,
-            target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : null
-          }
-        };
-      },
-
-      'Bridge.get_transaction_history': (params) => {
-        const filterParams = params[0] || {};
-        const limit = filterParams.limit || 10;
-        const offset = filterParams.offset || 0;
-
-        // Generate random transactions
-        const transactions = [];
-        const total = 20;
-
-        for (let i = 0; i < Math.min(limit, total - offset); i++) {
-          const chains = ['ethereum', 'polygon', 'solana', 'avalanche', 'bsc'];
-          const tokens = ['USDC', 'USDT', 'ETH', 'SOL', 'MATIC', 'AVAX', 'BNB'];
-          const statuses = ['pending', 'confirmed', 'completed', 'failed'];
-
-          const chainIndex = Math.floor(Math.random() * chains.length);
-          const tokenIndex = Math.floor(Math.random() * tokens.length);
-          const statusIndex = Math.floor(Math.random() * statuses.length);
-
-          transactions.push({
-            id: `tx-${i + offset + 1}`,
-            tx_hash: `0x${Math.random().toString(16).substring(2, 66)}`,
-            status: statuses[statusIndex],
-            chain: chains[chainIndex],
-            token: tokens[tokenIndex],
-            amount: Math.floor(Math.random() * 1000) + 100,
-            timestamp: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString()
-          });
-        }
-
-        return {
-          success: true,
-          transactions: transactions,
-          total: total,
-          limit: limit,
-          offset: offset
-        };
-      },
-
-      'Bridge.get_bridge_settings': () => ({
-        success: true,
-        settings: {
-          default_protocol: 'wormhole',
-          gas_settings: {
-            ethereum: {
-              gas_price_strategy: 'medium',
-              max_gas_price: 100
-            },
-            polygon: {
-              gas_price_strategy: 'medium',
-              max_gas_price: 300
-            }
-          },
-          slippage_tolerance: 0.5,
-          auto_approve: false,
-          preferred_chains: ['ethereum', 'polygon', 'solana'],
-          preferred_tokens: ['usdc', 'eth', 'sol'],
-          security: {
-            require_confirmation: true,
-            max_transaction_value: 1000
-          }
-        }
-      }),
-
-      'Bridge.update_bridge_settings': (params) => ({
-        success: true,
-        message: 'Bridge settings updated successfully'
-      }),
-
-      'Bridge.reset_bridge_settings': () => ({
-        success: true,
-        message: 'Bridge settings reset to default successfully'
-      }),
-
-      // LayerZero bridge mock implementations
-      'get_available_chains_layerzero': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 101 },
-          { id: 'bsc', name: 'Binance Smart Chain', chainId: 102 },
-          { id: 'avalanche', name: 'Avalanche', chainId: 106 },
-          { id: 'polygon', name: 'Polygon', chainId: 109 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 110 },
-          { id: 'optimism', name: 'Optimism', chainId: 111 },
-          { id: 'fantom', name: 'Fantom', chainId: 112 },
-          { id: 'solana', name: 'Solana', chainId: 168 }
-        ]
-      }),
-
-      'get_available_tokens_layerzero': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true },
-          { symbol: 'WETH', name: 'Wrapped Ethereum', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, is_native: false }
-        ]
-      }),
-
-      'bridge_tokens_layerzero': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'solana',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.005,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'solana' ? 'SOL' : 'GAS'),
-          usd_value: 15.75
-        },
-        messageId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_layerzero': (params) => {
-        // Generate a deterministic status based on the message ID or transaction hash
-        const messageId = params.messageId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = messageId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'solana' : 'ethereum',
-          messageId: messageId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 10 : 5) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      // Axelar bridge mock implementations
-      'get_available_chains_axelar': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1 },
-          { id: 'polygon', name: 'Polygon', chainId: 137 },
-          { id: 'avalanche', name: 'Avalanche', chainId: 43114 },
-          { id: 'fantom', name: 'Fantom', chainId: 250 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 42161 },
-          { id: 'optimism', name: 'Optimism', chainId: 10 },
-          { id: 'bsc', name: 'Binance Smart Chain', chainId: 56 },
-          { id: 'moonbeam', name: 'Moonbeam', chainId: 1284 },
-          { id: 'celo', name: 'Celo', chainId: 42220 },
-          { id: 'kava', name: 'Kava', chainId: 2222 },
-          { id: 'filecoin', name: 'Filecoin', chainId: 314 }
-        ]
-      }),
-
-      'get_available_tokens_axelar': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'axlUSDC', name: 'Axelar Wrapped USDC', address: '0xEB466342C4d449BC9f53A865D5Cb90586f405215', decimals: 6, is_native: false },
-          { symbol: 'axlUSDT', name: 'Axelar Wrapped USDT', address: '0x7FF4a56B32ee13D7D4D405887E0eA37d61Ed919e', decimals: 6, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true }
-        ]
-      }),
-
-      'bridge_tokens_axelar': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'avalanche',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.003,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'avalanche' ? 'AVAX' : 'GAS')),
-          usd_value: 9.45
-        },
-        transferId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_axelar': (params) => {
-        // Generate a deterministic status based on the transfer ID or transaction hash
-        const transferId = params.transferId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = transferId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'avalanche' : 'ethereum',
-          transferId: transferId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 15 : 7) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'get_gas_fee_axelar': (params) => ({
-        success: true,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'avalanche',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        fee: {
-          amount: 0.003,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'avalanche' ? 'AVAX' : 'GAS')),
-          usd_value: 9.45
-        },
-        estimated_time: 20 // minutes
-      }),
-
-      // Synapse bridge mock implementations
-      'get_available_chains_synapse': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1 },
-          { id: 'bsc', name: 'Binance Smart Chain', chainId: 56 },
-          { id: 'polygon', name: 'Polygon', chainId: 137 },
-          { id: 'avalanche', name: 'Avalanche', chainId: 43114 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 42161 },
-          { id: 'optimism', name: 'Optimism', chainId: 10 },
-          { id: 'fantom', name: 'Fantom', chainId: 250 },
-          { id: 'base', name: 'Base', chainId: 8453 },
-          { id: 'zksync', name: 'zkSync', chainId: 324 },
-          { id: 'linea', name: 'Linea', chainId: 59144 },
-          { id: 'mantle', name: 'Mantle', chainId: 5000 }
-        ]
-      }),
-
-      'get_available_tokens_synapse': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'DAI', name: 'Dai Stablecoin', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, is_native: false },
-          { symbol: 'nUSD', name: 'Synapse nUSD', address: '0x1B84765dE8B7566e4cEAF4D0fD3c5aF52D3DdE4F', decimals: 18, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true }
-        ]
-      }),
-
-      'bridge_tokens_synapse': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'optimism',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.002,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'avalanche' ? 'AVAX' : 'GAS')),
-          usd_value: 6.25
-        },
-        bridgeId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_synapse': (params) => {
-        // Generate a deterministic status based on the bridge ID or transaction hash
-        const bridgeId = params.bridgeId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = bridgeId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'confirmed', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'optimism' : 'ethereum',
-          bridgeId: bridgeId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Waiting for target chain confirmation',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 8 : 4) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'get_bridge_fee_synapse': (params) => ({
-        success: true,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'optimism',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        fee: {
-          amount: 0.002,
-          token: params.sourceChain === 'ethereum' ? 'ETH' : (params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'avalanche' ? 'AVAX' : 'GAS')),
-          usd_value: 6.25
-        },
-        estimated_time: 10 // minutes
-      }),
-
-      // Across bridge mock implementations
-      'get_available_chains_across': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1 },
-          { id: 'polygon', name: 'Polygon', chainId: 137 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 42161 },
-          { id: 'optimism', name: 'Optimism', chainId: 10 },
-          { id: 'base', name: 'Base', chainId: 8453 },
-          { id: 'zksync', name: 'zkSync', chainId: 324 },
-          { id: 'linea', name: 'Linea', chainId: 59144 }
-        ]
-      }),
-
-      'get_available_tokens_across': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'DAI', name: 'Dai Stablecoin', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, is_native: false },
-          { symbol: 'WBTC', name: 'Wrapped Bitcoin', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true }
-        ]
-      }),
-
-      'bridge_tokens_across': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'arbitrum',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.0015,
-          token: params.sourceChain === 'polygon' ? 'MATIC' : 'ETH',
-          usd_value: 4.50
-        },
-        depositId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        relay_time_minutes: 15,
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_across': (params) => {
-        // Generate a deterministic status based on the deposit ID or transaction hash
-        const depositId = params.depositId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = depositId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'relaying', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'arbitrum' : 'ethereum',
-          depositId: depositId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Relaying to target chain',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 15 : 8) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'get_relay_fee_across': (params) => ({
-        success: true,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'arbitrum',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        fee: {
-          amount: 0.0015,
-          token: params.sourceChain === 'polygon' ? 'MATIC' : 'ETH',
-          usd_value: 4.50
-        },
-        relay_time_minutes: params.sourceChain === 'ethereum' && params.targetChain === 'arbitrum' ? 8 :
-                           (params.sourceChain === 'arbitrum' && params.targetChain === 'ethereum' ? 25 : 15)
-      }),
-
-      // Hop Protocol mock implementations
-      'get_available_chains_hop': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1 },
-          { id: 'polygon', name: 'Polygon', chainId: 137 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 42161 },
-          { id: 'optimism', name: 'Optimism', chainId: 10 },
-          { id: 'gnosis', name: 'Gnosis', chainId: 100 },
-          { id: 'base', name: 'Base', chainId: 8453 }
-        ]
-      }),
-
-      'get_available_tokens_hop': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'DAI', name: 'Dai Stablecoin', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, is_native: false },
-          { symbol: 'MATIC', name: 'Polygon', address: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0', decimals: 18, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true }
-        ]
-      }),
-
-      'bridge_tokens_hop': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'optimism',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.002,
-          token: params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'gnosis' ? 'XDAI' : 'ETH'),
-          usd_value: 6.00
-        },
-        transferId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-        estimated_time_minutes: 20,
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_hop': (params) => {
-        // Generate a deterministic status based on the transfer ID or transaction hash
-        const transferId = params.transferId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = transferId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'in_transit', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'optimism' : 'ethereum',
-          transferId: transferId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Tokens in transit to target chain',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 15 : 8) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'get_bridge_fee_hop': (params) => ({
-        success: true,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'optimism',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        fee: {
-          amount: 0.002,
-          token: params.sourceChain === 'polygon' ? 'MATIC' : (params.sourceChain === 'gnosis' ? 'XDAI' : 'ETH'),
-          usd_value: 6.00
-        },
-        estimated_time_minutes: params.sourceChain === 'ethereum' && params.targetChain === 'optimism' ? 15 :
-                               (params.sourceChain === 'optimism' && params.targetChain === 'ethereum' ? 45 : 20)
-      }),
-
-      // Stargate Protocol mock implementations
-      'get_available_chains_stargate': () => ({
-        success: true,
-        chains: [
-          { id: 'ethereum', name: 'Ethereum', chainId: 1 },
-          { id: 'bsc', name: 'Bsc', chainId: 56 },
-          { id: 'avalanche', name: 'Avalanche', chainId: 43114 },
-          { id: 'polygon', name: 'Polygon', chainId: 137 },
-          { id: 'arbitrum', name: 'Arbitrum', chainId: 42161 },
-          { id: 'optimism', name: 'Optimism', chainId: 10 },
-          { id: 'fantom', name: 'Fantom', chainId: 250 },
-          { id: 'metis', name: 'Metis', chainId: 1088 },
-          { id: 'base', name: 'Base', chainId: 8453 },
-          { id: 'kava', name: 'Kava', chainId: 2222 }
-        ]
-      }),
-
-      'get_available_tokens_stargate': (params) => ({
-        success: true,
-        chain: params.chain || 'ethereum',
-        tokens: [
-          { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, is_native: false },
-          { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, is_native: false },
-          { symbol: 'ETH', name: 'Ethereum', address: 'native', decimals: 18, is_native: true },
-          { symbol: 'BUSD', name: 'Binance USD', address: '0x4Fabb145d64652a948d72533023f6E7A623C7C53', decimals: 18, is_native: false },
-          { symbol: 'FRAX', name: 'Frax', address: '0x853d955aCEf822Db058eb8505911ED77F175b99e', decimals: 18, is_native: false }
-        ]
-      }),
-
-      'bridge_tokens_stargate': (params) => ({
-        success: true,
-        transactionHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-        status: 'pending',
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'arbitrum',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        recipient: params.recipient || '0x1234567890abcdef1234567890abcdef12345678',
-        fee: {
-          amount: 0.0025,
-          token: params.sourceChain === 'polygon' ? 'MATIC' :
-                (params.sourceChain === 'bsc' ? 'BNB' :
-                (params.sourceChain === 'avalanche' ? 'AVAX' :
-                (params.sourceChain === 'fantom' ? 'FTM' :
-                (params.sourceChain === 'metis' ? 'METIS' :
-                (params.sourceChain === 'kava' ? 'KAVA' : 'ETH'))))),
-          usd_value: 7.50
-        },
-        transferId: `0x${Math.random().toString(16).substring(2, 66)}`,
-        estimated_completion_time: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        estimated_time_minutes: 15,
-        progress: {
-          current_step: 1,
-          total_steps: 3,
-          description: 'Waiting for source chain confirmation',
-          percentage: 33
-        },
-        timestamp: new Date().toISOString()
-      }),
-
-      'check_bridge_status_stargate': (params) => {
-        // Generate a deterministic status based on the transfer ID or transaction hash
-        const transferId = params.transferId || '';
-        const txHash = params.transactionHash || '';
-        const hashStr = transferId || txHash;
-        const hashSum = hashStr.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const statusIndex = (hashSum % 3);
-        const statuses = ['pending', 'in_transit', 'completed'];
-        const status = statuses[statusIndex];
-
-        return {
-          success: true,
-          status: status,
-          sourceChain: params.sourceChain || 'ethereum',
-          targetChain: params.sourceChain === 'ethereum' ? 'arbitrum' : 'ethereum',
-          transferId: transferId || `0x${Math.random().toString(16).substring(2, 66)}`,
-          initiated_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-          completed_at: status === 'completed' ? new Date().toISOString() : undefined,
-          progress: status !== 'completed' ? {
-            current_step: status === 'pending' ? 1 : 2,
-            total_steps: 3,
-            description: status === 'pending' ? 'Waiting for source chain confirmation' : 'Tokens in transit to target chain',
-            percentage: status === 'pending' ? 33 : 66
-          } : undefined,
-          estimated_completion_time: status !== 'completed' ? new Date(Date.now() + (status === 'pending' ? 12 : 6) * 60 * 1000).toISOString() : undefined,
-          target_tx_hash: status === 'completed' ? `0x${Math.random().toString(16).substring(2, 66)}` : undefined
-        };
-      },
-
-      'get_bridge_fee_stargate': (params) => ({
-        success: true,
-        sourceChain: params.sourceChain || 'ethereum',
-        targetChain: params.targetChain || 'arbitrum',
-        token: params.token || 'USDC',
-        amount: params.amount || '100',
-        fee: {
-          amount: 0.0025,
-          token: params.sourceChain === 'polygon' ? 'MATIC' :
-                (params.sourceChain === 'bsc' ? 'BNB' :
-                (params.sourceChain === 'avalanche' ? 'AVAX' :
-                (params.sourceChain === 'fantom' ? 'FTM' :
-                (params.sourceChain === 'metis' ? 'METIS' :
-                (params.sourceChain === 'kava' ? 'KAVA' : 'ETH'))))),
-          usd_value: 7.50
-        },
-        estimated_time_minutes: params.sourceChain === 'ethereum' && params.targetChain === 'arbitrum' ? 10 :
-                               (params.sourceChain === 'arbitrum' && params.targetChain === 'ethereum' ? 30 : 15)
-      })
-    };
-
-    // Get the mock implementation or return a generic mock result
-    const mockImpl = mockImplementations[command];
-    if (mockImpl) {
-      return mockImpl(params);
+  async shutdown() {
+    this.logger.info('Shutting down EnhancedJuliaBridge...');
+    this.removeAllListeners(); // Remove event listeners
+
+    if (this.isConnected && typeof this.juliaBridge.disconnect === 'function') {
+      try {
+        await this.juliaBridge.disconnect();
+        this.logger.info('Underlying JuliaBridge disconnected.');
+      } catch (error) {
+        this.logger.error(`Error disconnecting underlying JuliaBridge: ${error.message}`);
+      }
     }
 
-    // Generic mock result
-    return {
-      success: true,
-      message: `Mock result for ${command}`,
-      timestamp: new Date().toISOString()
-    };
-  }
-
-  /**
-   * Get the connection status as a formatted string
-   */
-  getConnectionStatusString() {
-    return this.isConnected
-      ? chalk.green('Connected to backend')
-      : chalk.red('Not connected to backend (using mock implementations)');
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.logger.info('EnhancedJuliaBridge shutdown complete.');
   }
 }
 

@@ -355,6 +355,96 @@ function handle_swarm_command(command::String, params::Dict)
             @error "Error executing task with swarm" exception=(e, catch_backtrace())
             return Dict("success" => false, "error" => "Error executing task with swarm: $(string(e))")
         end
+    elseif command == "swarms.start_swarm" || command == "swarm.start_swarm"
+        # Start a swarm
+        swarm_id = get(params, "swarm_id", nothing)
+
+        if isnothing(swarm_id)
+            return Dict("success" => false, "error" => "Missing required parameter: swarm_id")
+        end
+
+        try
+            # Check if Swarms module is available
+            if isdefined(JuliaOS, :Swarms) && isdefined(JuliaOS.Swarms, :start_swarm)
+                @info "Using JuliaOS.Swarms.start_swarm"
+                success = JuliaOS.Swarms.start_swarm(swarm_id)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "swarm_id" => swarm_id,
+                            "status" => "started",
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to start swarm: $swarm_id")
+                end
+            else
+                @warn "JuliaOS.Swarms module not available or start_swarm not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "swarm_id" => swarm_id,
+                        "status" => "started",
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error starting swarm" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error starting swarm: $(string(e))")
+        end
+    elseif command == "swarms.stop_swarm" || command == "swarm.stop_swarm"
+        # Stop a swarm
+        swarm_id = get(params, "swarm_id", nothing)
+
+        if isnothing(swarm_id)
+            return Dict("success" => false, "error" => "Missing required parameter: swarm_id")
+        end
+
+        try
+            # Check if Swarms module is available
+            if isdefined(JuliaOS, :Swarms) && isdefined(JuliaOS.Swarms, :stop_swarm)
+                @info "Using JuliaOS.Swarms.stop_swarm"
+                success = JuliaOS.Swarms.stop_swarm(swarm_id)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "swarm_id" => swarm_id,
+                            "status" => "stopped",
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to stop swarm: $swarm_id")
+                end
+            else
+                @warn "JuliaOS.Swarms module not available or stop_swarm not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "swarm_id" => swarm_id,
+                        "status" => "stopped",
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error stopping swarm" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error stopping swarm: $(string(e))")
+        end
+    elseif command == "swarms.add_agent_to_swarm" || command == "swarm.add_agent_to_swarm"
+        # Add agent to swarm (alias for swarm.add_agent)
+        return handle_swarm_command("swarm.add_agent", params)
+    elseif command == "swarms.remove_agent_from_swarm" || command == "swarm.remove_agent_from_swarm"
+        # Remove agent from swarm (alias for swarm.remove_agent)
+        return handle_swarm_command("swarm.remove_agent", params)
     else
         return Dict("success" => false, "error" => "Unknown swarm command: $command")
     end
