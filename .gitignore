@@ -25,6 +25,7 @@ tmp/
 *-slim.zip
 transfer-instructions.txt
 exclusions.txt
+.cursor/rules
 
 # Agent and wallet data - Don't commit sensitive information
 data/agent-memories/
