@@ -482,7 +482,7 @@ Alternatively, you can use the traditional two-terminal approach:
 **Terminal 1: Start the Julia Server**
 ```bash
 # Navigate to the julia directory
-cd julia/server
+cd julia
 
 # Run the server script
 julia --project=. julia_server.jl
@@ -495,7 +495,7 @@ julia --project=. julia_server.jl
 # If not, cd back to it
 
 # Run the interactive CLI script
-node scripts/interactive.cjs
+node packages/cli/interactive.cjs
 ```
 *You should now see the JuliaOS CLI menu with options for Agent Management, Swarm Intelligence, Blockchain Operations, and more.*
 
