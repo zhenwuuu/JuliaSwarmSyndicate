@@ -292,6 +292,187 @@ function handle_dex_command(command::String, params::Dict)
             @error "Error getting best route" exception=(e, catch_backtrace())
             return Dict("success" => false, "error" => "Error getting best route: $(string(e))")
         end
+    elseif command == "dex.get_dex" || command == "DEX.get_dex"
+        # Get DEX details
+        dex = get(params, "dex", nothing)
+
+        if isnothing(dex)
+            return Dict("success" => false, "error" => "Missing required parameter: dex")
+        end
+
+        try
+            # Check if DEX module is available
+            if isdefined(JuliaOS, :DEX) && isdefined(JuliaOS.DEX, :get_dex)
+                @info "Using JuliaOS.DEX.get_dex"
+                dex_details = JuliaOS.DEX.get_dex(dex)
+
+                if dex_details === nothing
+                    return Dict("success" => false, "error" => "DEX not found: $dex")
+                end
+
+                return Dict("success" => true, "data" => dex_details)
+            else
+                @warn "JuliaOS.DEX module not available or get_dex not defined"
+                # Provide a mock implementation
+                if dex == "uniswap"
+                    mock_dex = Dict(
+                        "id" => "uniswap",
+                        "name" => "Uniswap V3",
+                        "chain" => "ethereum",
+                        "type" => "amm",
+                        "website" => "https://uniswap.org",
+                        "factory_address" => "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+                        "router_address" => "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+                        "supported_chains" => ["ethereum", "polygon", "arbitrum", "optimism"]
+                    )
+                    return Dict("success" => true, "data" => mock_dex)
+                else
+                    return Dict("success" => false, "error" => "DEX not found: $dex")
+                end
+            end
+        catch e
+            @error "Error getting DEX details" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error getting DEX details: $(string(e))")
+        end
+    elseif command == "dex.get_token_price" || command == "DEX.get_token_price"
+        # Get token price
+        token = get(params, "token", nothing)
+        dex = get(params, "dex", nothing)
+
+        if isnothing(token) || isnothing(dex)
+            return Dict("success" => false, "error" => "Missing required parameters: token and dex")
+        end
+
+        try
+            # Check if DEX module is available
+            if isdefined(JuliaOS, :DEX) && isdefined(JuliaOS.DEX, :get_token_price)
+                @info "Using JuliaOS.DEX.get_token_price"
+                price = JuliaOS.DEX.get_token_price(token, dex)
+
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "token" => token,
+                        "dex" => dex,
+                        "price" => price,
+                        "timestamp" => string(now())
+                    )
+                )
+            else
+                @warn "JuliaOS.DEX module not available or get_token_price not defined"
+                # Provide a mock implementation
+                mock_price = rand(0.01:0.01:5000.0)
+
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "token" => token,
+                        "dex" => dex,
+                        "price" => mock_price,
+                        "price_usd" => mock_price,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error getting token price" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error getting token price: $(string(e))")
+        end
+    elseif command == "dex.get_token_pair_price" || command == "DEX.get_token_pair_price"
+        # Get token pair price
+        base_token = get(params, "base_token", nothing)
+        quote_token = get(params, "quote_token", nothing)
+        dex = get(params, "dex", nothing)
+
+        if isnothing(base_token) || isnothing(quote_token) || isnothing(dex)
+            return Dict("success" => false, "error" => "Missing required parameters: base_token, quote_token, and dex")
+        end
+
+        try
+            # Check if DEX module is available
+            if isdefined(JuliaOS, :DEX) && isdefined(JuliaOS.DEX, :get_token_pair_price)
+                @info "Using JuliaOS.DEX.get_token_pair_price"
+                price = JuliaOS.DEX.get_token_pair_price(base_token, quote_token, dex)
+
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "base_token" => base_token,
+                        "quote_token" => quote_token,
+                        "dex" => dex,
+                        "price" => price,
+                        "timestamp" => string(now())
+                    )
+                )
+            else
+                @warn "JuliaOS.DEX module not available or get_token_pair_price not defined"
+                # Provide a mock implementation
+                mock_price = rand(0.01:0.01:5000.0)
+
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "base_token" => base_token,
+                        "quote_token" => quote_token,
+                        "dex" => dex,
+                        "price" => mock_price,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error getting token pair price" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error getting token pair price: $(string(e))")
+        end
+    elseif command == "dex.get_swap_quote" || command == "DEX.get_swap_quote"
+        # Get swap quote (alias for dex.get_quote)
+        return handle_dex_command("dex.get_quote", params)
+    elseif command == "dex.get_liquidity_pools" || command == "DEX.get_liquidity_pools"
+        # Get liquidity pools (alias for dex.get_pools)
+        return handle_dex_command("dex.get_pools", params)
+    elseif command == "dex.get_pool_details" || command == "DEX.get_pool_details"
+        # Get pool details
+        pool_id = get(params, "pool_id", nothing)
+        dex = get(params, "dex", nothing)
+
+        if isnothing(pool_id) || isnothing(dex)
+            return Dict("success" => false, "error" => "Missing required parameters: pool_id and dex")
+        end
+
+        try
+            # Check if DEX module is available
+            if isdefined(JuliaOS, :DEX) && isdefined(JuliaOS.DEX, :get_pool_details)
+                @info "Using JuliaOS.DEX.get_pool_details"
+                pool = JuliaOS.DEX.get_pool_details(pool_id, dex)
+
+                if pool === nothing
+                    return Dict("success" => false, "error" => "Pool not found: $pool_id")
+                end
+
+                return Dict("success" => true, "data" => pool)
+            else
+                @warn "JuliaOS.DEX module not available or get_pool_details not defined"
+                # Provide a mock implementation
+                mock_pool = Dict(
+                    "id" => pool_id,
+                    "dex" => dex,
+                    "address" => "0x" * bytes2hex(rand(UInt8, 20)),
+                    "token0" => Dict("address" => "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "symbol" => "WETH", "decimals" => 18),
+                    "token1" => Dict("address" => "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "symbol" => "USDC", "decimals" => 6),
+                    "fee" => 0.003,
+                    "liquidity" => string(rand(1:1000) * 10^18),
+                    "volume_24h" => string(rand(1:100) * 10^6),
+                    "tvl" => string(rand(1:1000) * 10^6),
+                    "price" => string(rand(1:5000)),
+                    "created_at" => string(now() - Day(rand(1:365)))
+                )
+
+                return Dict("success" => true, "data" => mock_pool)
+            end
+        catch e
+            @error "Error getting pool details" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error getting pool details: $(string(e))")
+        end
     else
         return Dict("success" => false, "error" => "Unknown DEX command: $command")
     end

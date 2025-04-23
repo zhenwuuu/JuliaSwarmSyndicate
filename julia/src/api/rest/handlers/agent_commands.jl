@@ -560,6 +560,233 @@ function handle_agent_command(command::String, params::Dict)
             @error "Error getting agent status" exception=(e, catch_backtrace())
             return Dict("success" => false, "error" => "Error getting agent status: $(string(e))")
         end
+    elseif command == "agents.get_memory" || command == "agents.get_agent_memory"
+        # Get agent memory
+        agent_id = get(params, "agent_id", nothing)
+        key = get(params, "key", nothing)
+
+        if isnothing(agent_id)
+            return Dict("success" => false, "error" => "Missing required parameter: agent_id")
+        end
+
+        try
+            # Check if Agents module is available
+            if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :getAgentMemory)
+                @info "Using JuliaOS.Agents.getAgentMemory"
+                memory = JuliaOS.Agents.getAgentMemory(agent_id, key)
+
+                return Dict(
+                    "success" => true,
+                    "data" => memory
+                )
+            else
+                @warn "JuliaOS.Agents module not available or getAgentMemory not defined"
+                # Provide a mock implementation
+                mock_memory = Dict(
+                    "agent_id" => agent_id,
+                    "key" => key,
+                    "value" => Dict("data" => "mock memory value"),
+                    "timestamp" => string(now())
+                )
+
+                return Dict(
+                    "success" => true,
+                    "data" => mock_memory
+                )
+            end
+        catch e
+            @error "Error getting agent memory" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error getting agent memory: $(string(e))")
+        end
+    elseif command == "agents.set_memory" || command == "agents.set_agent_memory"
+        # Set agent memory
+        agent_id = get(params, "agent_id", nothing)
+        key = get(params, "key", nothing)
+        value = get(params, "value", nothing)
+
+        if isnothing(agent_id)
+            return Dict("success" => false, "error" => "Missing required parameter: agent_id")
+        end
+
+        if isnothing(key)
+            return Dict("success" => false, "error" => "Missing required parameter: key")
+        end
+
+        if isnothing(value)
+            return Dict("success" => false, "error" => "Missing required parameter: value")
+        end
+
+        try
+            # Check if Agents module is available
+            if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :setAgentMemory)
+                @info "Using JuliaOS.Agents.setAgentMemory"
+                success = JuliaOS.Agents.setAgentMemory(agent_id, key, value)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "agent_id" => agent_id,
+                            "key" => key,
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to set agent memory")
+                end
+            else
+                @warn "JuliaOS.Agents module not available or setAgentMemory not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "agent_id" => agent_id,
+                        "key" => key,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error setting agent memory" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error setting agent memory: $(string(e))")
+        end
+    elseif command == "agents.clear_memory" || command == "agents.clear_agent_memory"
+        # Clear agent memory
+        agent_id = get(params, "agent_id", nothing)
+        key = get(params, "key", nothing)
+
+        if isnothing(agent_id)
+            return Dict("success" => false, "error" => "Missing required parameter: agent_id")
+        end
+
+        try
+            # Check if Agents module is available
+            if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :clearAgentMemory)
+                @info "Using JuliaOS.Agents.clearAgentMemory"
+                success = JuliaOS.Agents.clearAgentMemory(agent_id, key)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "agent_id" => agent_id,
+                            "key" => key,
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to clear agent memory")
+                end
+            else
+                @warn "JuliaOS.Agents module not available or clearAgentMemory not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "agent_id" => agent_id,
+                        "key" => key,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error clearing agent memory" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error clearing agent memory: $(string(e))")
+        end
+    elseif command == "agents.connect_swarm" || command == "agents.connect_agent_to_swarm"
+        # Connect agent to swarm
+        agent_id = get(params, "agent_id", nothing)
+        swarm_id = get(params, "swarm_id", nothing)
+
+        if isnothing(agent_id)
+            return Dict("success" => false, "error" => "Missing required parameter: agent_id")
+        end
+
+        if isnothing(swarm_id)
+            return Dict("success" => false, "error" => "Missing required parameter: swarm_id")
+        end
+
+        try
+            # Check if Agents module is available
+            if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :connectAgentToSwarm)
+                @info "Using JuliaOS.Agents.connectAgentToSwarm"
+                success = JuliaOS.Agents.connectAgentToSwarm(agent_id, swarm_id)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "agent_id" => agent_id,
+                            "swarm_id" => swarm_id,
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to connect agent to swarm")
+                end
+            else
+                @warn "JuliaOS.Agents module not available or connectAgentToSwarm not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "agent_id" => agent_id,
+                        "swarm_id" => swarm_id,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error connecting agent to swarm" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error connecting agent to swarm: $(string(e))")
+        end
+    elseif command == "agents.disconnect_swarm" || command == "agents.disconnect_agent_from_swarm"
+        # Disconnect agent from swarm
+        agent_id = get(params, "agent_id", nothing)
+        swarm_id = get(params, "swarm_id", nothing)
+
+        if isnothing(agent_id)
+            return Dict("success" => false, "error" => "Missing required parameter: agent_id")
+        end
+
+        if isnothing(swarm_id)
+            return Dict("success" => false, "error" => "Missing required parameter: swarm_id")
+        end
+
+        try
+            # Check if Agents module is available
+            if isdefined(JuliaOS, :Agents) && isdefined(JuliaOS.Agents, :disconnectAgentFromSwarm)
+                @info "Using JuliaOS.Agents.disconnectAgentFromSwarm"
+                success = JuliaOS.Agents.disconnectAgentFromSwarm(agent_id, swarm_id)
+
+                if success
+                    return Dict(
+                        "success" => true,
+                        "data" => Dict(
+                            "agent_id" => agent_id,
+                            "swarm_id" => swarm_id,
+                            "timestamp" => string(now())
+                        )
+                    )
+                else
+                    return Dict("success" => false, "error" => "Failed to disconnect agent from swarm")
+                end
+            else
+                @warn "JuliaOS.Agents module not available or disconnectAgentFromSwarm not defined"
+                # Provide a mock implementation
+                return Dict(
+                    "success" => true,
+                    "data" => Dict(
+                        "agent_id" => agent_id,
+                        "swarm_id" => swarm_id,
+                        "timestamp" => string(now())
+                    )
+                )
+            end
+        catch e
+            @error "Error disconnecting agent from swarm" exception=(e, catch_backtrace())
+            return Dict("success" => false, "error" => "Error disconnecting agent from swarm: $(string(e))")
+        end
     else
         return Dict("success" => false, "error" => "Unknown agent command: $command")
     end

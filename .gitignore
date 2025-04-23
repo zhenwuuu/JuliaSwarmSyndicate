@@ -9,7 +9,6 @@ typechain-types/
 node_modules/
 
 # Generated runtime directories
-swarms/
 cli/data/agent-memories/
 cli/data/logs/
 cli/@juliaos/
@@ -45,16 +44,6 @@ cli/data/storage/
 **/*/data/*.json
 **/data/marketplace/
 
-# Generated runtime data
-cli/agents/
-cli/swarms/
-cli/bridges/
-cli/storage/
-cli/logs/
-cli/tmp/
-agents/
-swarms/
-blockchain-functions/
 
 # Test and Development
 test-ledger/
@@ -144,6 +133,20 @@ command.txt
 .vscode-test/
 cursorrules/
 *.code-workspace
+
+# Cursor specific
+.cursor/
+.cursor-server/
+.cursor-server-*
+.cursor-*
+.cursor.json
+.cursor-config/
+.cursor-project/
+.cursor-history/
+.cursor-chat/
+.cursor-commands/
+.cursor-snippets/
+.cursor-settings.json
 
 # OS Generated
 .DS_Store
