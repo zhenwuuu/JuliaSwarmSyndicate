@@ -479,10 +479,19 @@ This script will:
 
 Alternatively, you can use the traditional two-terminal approach:
 
+**Step 0: Run build command**
+```bash
+npm run build
+```
+
 **Terminal 1: Start the Julia Server**
 ```bash
 # Navigate to the julia directory
-cd julia
+cd julia/server
+
+# Activate the Julia environment and install packages
+# This might take some time on the first run as it downloads and precompiles packages
+julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
 
 # Run the server script
 julia --project=. julia_server.jl
@@ -495,7 +504,7 @@ julia --project=. julia_server.jl
 # If not, cd back to it
 
 # Run the interactive CLI script
-node packages/cli/interactive.cjs
+node scripts/interactive.cjs
 ```
 *You should now see the JuliaOS CLI menu with options for Agent Management, Swarm Intelligence, Blockchain Operations, and more.*
 

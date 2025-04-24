@@ -204,7 +204,7 @@ const menuModules = {
     agentManagement: require('./agent_management_menu'),
     swarmManagement: require('./swarm_management_menu'),
     walletManagement: require('./wallet_management_menu'),
-    apiKeys: require('./api_keys_menu'),
+    apiKeys: require('./api_access_codes_menu'),
     systemConfig: require('./system_config_menu'),
     performanceMetrics: require('./performance_metrics_menu'),
     helpDocumentation: require('./help_documentation_menu'),
