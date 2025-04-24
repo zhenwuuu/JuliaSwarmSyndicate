@@ -31,10 +31,11 @@ let walletManager;
  * 1) Load the ESM WalletManager class  
  * 2) Instantiate it  
  */
-async function setupWalletManager() {
+(async () => {
     const { WalletManager } = await import('../../wallets/src/index.js');
-    walletManager = new WalletManager(/* you can pass config here if needed */)
-}
+    walletManager = new WalletManager(/* optional config */);
+    console.log('WalletManager is ready:', walletManager);
+})();
 
 
 const { v4: uuidv4 } = require('uuid');
@@ -3738,7 +3739,7 @@ async function main() {
         // Run initial system checks
         await runAllSystemChecks();
 
-        await setupWalletManager(); // Initialize wallet manager
+        // await setupWalletManager(); // Initialize wallet manager
 
         // Update menuDeps with initialized juliaBridge
         menuDeps.juliaBridge = juliaBridge;
