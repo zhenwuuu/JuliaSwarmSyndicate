@@ -46,6 +46,7 @@ WebSockets = "104b5d7c-a370-577a-8038-80a2059c5097"
 
 [sources]
 Redis = {url = "https://github.com/JuliaDatabases/Redis.jl"}
+HTTP = {url = "https://github.com/JuliaWeb/HTTP.jl"}
 
 [compat]
 BSON = "0.3"

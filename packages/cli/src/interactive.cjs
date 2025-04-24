@@ -32,7 +32,7 @@ let walletManager;
  * 2) Instantiate it  
  */
 async function setupWalletManager() {
-    const { WalletManager } = await import('../../packages/wallets/src/index.js');
+    const { WalletManager } = await import('../../wallets/src/index.js');
     walletManager = new WalletManager(/* you can pass config here if needed */)
 }
 
