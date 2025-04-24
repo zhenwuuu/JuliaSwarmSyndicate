@@ -1,6 +1,6 @@
 # JuliaOS Open Source AI Agent & Swarm Framework
 
-## Updated local machine guide
+## Updated local machine deployment guide
 
 **1. Clone the Repository:**
 
