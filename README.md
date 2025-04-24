@@ -350,7 +350,7 @@ That's it! This will build and start JuliaOS in Docker containers. The CLI will 
 
     # Activate the Julia environment and install packages
     # This might take some time on the first run as it downloads and precompiles packages
-    julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+    julia -e 'using Pkg; Pkg.activate("."); Pkg.update(); Pkg.instantiate()'
 
     # Navigate back to the root directory
     cd ..
@@ -364,10 +364,10 @@ That's it! This will build and start JuliaOS in Docker containers. The CLI will 
     pip install git+https://github.com/Juliaoscode/JuliaOS.git#subdirectory=packages/python-wrapper
 
     # Option 2: Install with LLM support
-    pip install "git+https://github.com/Juliaoscode/JuliaOS.git#subdirectory=packages/python-wrapper[llm]"
+    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix#egg=juliaos[llm]&subdirectory=packages/python-wrapper"
 
     # Option 3: Install with Google ADK support
-    pip install "git+https://github.com/Juliaoscode/JuliaOS.git#subdirectory=packages/python-wrapper[adk]"
+    pip install "git+https://github.com/Juliaoscode/JuliaOS.git@23-04-max-fix#egg=juliaos[adk]&subdirectory=packages/python-wrapper"
 
     # Option 4: For development (after cloning the repository)
     cd packages/python-wrapper
@@ -424,6 +424,11 @@ That's it! This will build and start JuliaOS in Docker containers. The CLI will 
     - **Solana**: [QuickNode](https://www.quicknode.com), [Alchemy](https://www.alchemy.com), [Helius](https://helius.xyz)
 
     Most providers offer free tiers that are sufficient for development and testing.
+
+    6. (if not using Docker) Build the project. Run:
+    ```bash
+    npm run build
+    ```
 
 ### Running JuliaOS
 
