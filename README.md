@@ -11,13 +11,12 @@ The Julia Swarm Syndicate operates as a collective of autonomous AI agents, each
 
 # Key Components
 # Swarm Agents:
+Technical Analyst: Specializes in technical analysis, utilizing indicators like the Relative Strength Index (RSI) and Bollinger Bands to identify overbought or oversold conditions and price breakouts.
 
-# Technical Analyst:
-Specializes in technical analysis, utilizing indicators like the Relative Strength Index (RSI) and Bollinger Bands to identify overbought or oversold conditions and price breakouts.
-# Degen Trader:
-Thrives on short-term price movements and high transaction volumes, capitalizing on rapid market pumps and dumps typical in DeFi.
-# Market Insight Trader:
-Focuses on macroeconomic factors, such as liquidity, market capitalization, and fully diluted valuation (FDV), to assess the long-term viability of tokens.
+Degen Trader: Thrives on short-term price movements and high transaction volumes, capitalizing on rapid market pumps and dumps typical in DeFi.
+
+Market Insight Trader: Focuses on macroeconomic factors, such as liquidity, market capitalization, and fully diluted valuation (FDV), to assess the long-term viability of tokens.
+
 Each agent operates with its own decision-making logic, confidence level, and simulated portfolio, tracking trades and returns to refine its strategy over time.
 
 # Swarm Intelligence Mechanism:
